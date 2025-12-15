@@ -1,6 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
+import { api } from "./_generated/api";
 
 // Faol sessiyalarni olish
 export const getActiveSessions = query({
@@ -173,6 +174,14 @@ export const completeSession = mutation({
           totalDebt: customer.totalDebt + debtAmount,
         });
       }
+    }
+
+    // Sessiya uchun cashback berish (5% bonus) - umumiy summa asosida
+    if (totalAmount > 0) {
+      await ctx.runMutation(api.cashbacks.earnFromSession, {
+        sessionId: args.sessionId,
+        sessionAmount: totalAmount,
+      });
     }
 
     return { success: true, totalAmount, paidAmount: args.paidAmount, debtAmount };
