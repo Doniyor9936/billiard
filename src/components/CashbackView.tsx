@@ -19,6 +19,8 @@ const statusStyles: Record<CashbackRow["status"], string> = {
   expired: "bg-red-100 text-red-700",
 };
 
+
+
 export function CashbackView() {
   const balance = useQuery(api.cashbacks.getBalance);
   const history = useQuery(api.cashbacks.getHistory, { limit: 50 }) as

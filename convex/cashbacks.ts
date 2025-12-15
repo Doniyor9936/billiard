@@ -29,13 +29,29 @@ async function getOrCreateSettings(ctx: any, accountId: string, userId: string) 
     const id = await ctx.db.insert("cashbackSettings", defaults);
     settings = { _id: id, ...defaults };
   }
+
   return settings;
 }
+
+// ======================
+// Query: Cashback sozlamalari
+// ======================
+export const getSettings = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+
+    const settings = await getOrCreateSettings(ctx, userId, userId);
+    return settings;
+  },
+});
 
 // ======================
 // Query: Cashback balans
 // ======================
 export const getBalance = query({
+  args: {},
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) return null;
@@ -59,19 +75,6 @@ export const getBalance = query({
     );
 
     return totals;
-  },
-});
-
-// ======================
-// Query: Cashback sozlamalari
-// ======================
-export const getSettings = query({
-  handler: async (ctx) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error("Tizimga kirish talab qilinadi");
-
-    const settings = await getOrCreateSettings(ctx, userId, userId);
-    return settings;
   },
 });
 
@@ -124,7 +127,7 @@ export const useCashback = mutation({
 });
 
 // ======================
-// Mutation: Cashback yaratish (balans qo‘shish)
+// Mutation: Cashback qo‘shish (earn)
 // ======================
 export const addCashback = mutation({
   args: { customerId: v.id("customers"), amount: v.number(), source: v.string() },
@@ -152,5 +155,38 @@ export const addCashback = mutation({
     });
 
     return cashbackId;
+  },
+});
+
+// ======================
+// Mutation: Cashback sozlamalarini yangilash
+// ======================
+export const updateSettings = mutation({
+  args: {
+    enabled: v.boolean(),
+    percentage: v.number(),
+    minAmount: v.number(),
+    applyOnDebt: v.boolean(),
+    maxUsagePercent: v.number(),
+    applyOnExtras: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+
+    const settings = await getOrCreateSettings(ctx, userId, userId);
+
+    await ctx.db.patch(settings._id, {
+      enabled: args.enabled,
+      percentage: args.percentage,
+      minAmount: args.minAmount,
+      applyOnDebt: args.applyOnDebt,
+      maxUsagePercent: args.maxUsagePercent,
+      applyOnExtras: args.applyOnExtras,
+      updatedAt: Date.now(),
+      updatedBy: userId,
+    });
+
+    return { success: true };
   },
 });
