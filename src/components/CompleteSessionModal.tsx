@@ -41,9 +41,10 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
   const totalPaid = paidAmount + cashbackAmount;
   const debtAmount = Math.max(0, session.currentTotalAmount - totalPaid);
 
-  const handleComplete = async () => {
-    if (!session) return;
+  const handleComplete = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault(); // MUHIM: sahifa reload bo‘lishining oldini oladi
 
+    if (!session) return;
     if (paidAmount < 0 || cashbackAmount < 0) {
       toast.error("To'lov yoki cashback manfiy bo'lishi mumkin emas");
       return;
@@ -88,7 +89,6 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
           </button>
         </div>
 
-        {/* Sessiya ma’lumotlari */}
         <div className="mb-6 p-4 bg-gray-50 rounded-lg">
           <h3 className="font-medium mb-3">{session.table?.name}</h3>
           {session.customer && (
@@ -134,7 +134,7 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
           )}
         </div>
 
-        {/* To’lov va cashback */}
+        {/* To‘lov va cashback bo‘limi */}
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">To'lov summasi (so'm)</label>
@@ -198,9 +198,7 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">- Cashback:</span>
-              <span className="font-medium text-green-700">
-                {cashbackAmount > 0 ? `-${cashbackAmount.toLocaleString()} so'm` : "0 so'm"}
-              </span>
+              <span className="font-medium text-green-700">{cashbackAmount > 0 ? `-${cashbackAmount.toLocaleString()} so'm` : "0 so'm"}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600">- To'lov:</span>
