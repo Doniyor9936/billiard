@@ -23,6 +23,7 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
   const session = activeSessions?.find((s) => s._id === sessionId);
   if (!session) return null;
 
+  // Cashback settings
   const customerCashback = session.customer?.cashbackBalance || 0;
   const maxByPercent =
     cashbackSettings && cashbackSettings.maxUsagePercent != null
@@ -38,35 +39,31 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
     session.currentTotalAmount > 0 &&
     expectedCashback >= (cashbackSettings?.minAmount ?? 1000);
 
-  const debtAmount = Math.max(
-    0,
-    session.currentTotalAmount - (paidAmount + cashbackAmount)
-  );
+  const totalPaid = paidAmount + cashbackAmount;
+  const debtAmount = Math.max(0, session.currentTotalAmount - totalPaid);
 
   const handleComplete = async () => {
     if (!session) return;
 
+    // Validatsiya
     if (paidAmount < 0 || cashbackAmount < 0) {
       toast.error("To'lov yoki cashback manfiy bo'lishi mumkin emas");
       return;
     }
 
-    const totalToPay = paidAmount + cashbackAmount;
-    if (totalToPay > session.currentTotalAmount) {
+    if (totalPaid > session.currentTotalAmount) {
       toast.error("To'lov + cashback umumiy summadan ko'p bo'lishi mumkin emas");
       return;
     }
 
-    const maxCashback =
-      Math.min(session.customer?.cashbackBalance || 0, session.currentTotalAmount);
-    if (cashbackAmount > maxCashback) {
+    if (cashbackAmount > maxCashbackUsable) {
       toast.error("Kiritilgan cashback mijoz balansidan ko'p");
       return;
     }
 
     try {
       setIsCompleting(true);
-      const result = await completeSession({
+      await completeSession({
         sessionId,
         paidAmount,
         paymentType,
@@ -88,11 +85,7 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
       <div className="bg-white rounded-lg p-6 w-full max-w-md">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold text-gray-900">O'yinni Tugatish</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 text-2xl"
-            type="button"
-          >
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">
             ×
           </button>
         </div>
@@ -142,27 +135,24 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
           )}
         </div>
 
-        {/* Form o‘rniga oddiy div ishlatamiz, submit yo‘q */}
         <div className="space-y-4">
+          {/* To'lov summasi */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">To'lov summasi (so'm)</label>
             <input
               type="number"
               value={paidAmount}
-              onChange={(e) =>
-                setPaidAmount(Math.max(0, parseInt(e.target.value || "0", 10) || 0))
-              }
+              onChange={(e) => setPaidAmount(Math.max(0, parseInt(e.target.value || "0", 10) || 0))}
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              min="0"
+              min={0}
               max={session.currentTotalAmount}
             />
           </div>
 
+          {/* Cashback */}
           {customerCashback > 0 && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Cashbackdan foydalanish (so'm)
-              </label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Cashbackdan foydalanish (so'm)</label>
               <input
                 type="number"
                 value={cashbackAmount}
@@ -184,6 +174,7 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
             </div>
           )}
 
+          {/* To'lov turi */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">To'lov turi</label>
             <select
@@ -197,6 +188,7 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
             </select>
           </div>
 
+          {/* Izoh */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Izoh (ixtiyoriy)</label>
             <textarea
@@ -208,6 +200,31 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
             />
           </div>
 
+          {/* Yakuniy hisoblash */}
+          <div className="p-3 bg-gray-50 border border-gray-200 rounded-md space-y-1 text-sm">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Jami hisob:</span>
+              <span className="font-medium">{session.currentTotalAmount.toLocaleString()} so'm</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">- Cashback:</span>
+              <span className="font-medium text-green-700">
+                {cashbackAmount > 0 ? `-${cashbackAmount.toLocaleString()} so'm` : "0 so'm"}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">- To'lov (naqd/karta):</span>
+              <span className="font-medium text-blue-700">
+                {paidAmount > 0 ? `-${paidAmount.toLocaleString()} so'm` : "0 so'm"}
+              </span>
+            </div>
+            <div className="flex justify-between border-t pt-1 mt-1">
+              <span className="font-semibold">Qarz summasi:</span>
+              <span className="font-semibold text-yellow-700">{debtAmount.toLocaleString()} so'm</span>
+            </div>
+          </div>
+
+          {/* Tugmalar */}
           <div className="mt-6 flex space-x-3">
             <button
               type="button"
