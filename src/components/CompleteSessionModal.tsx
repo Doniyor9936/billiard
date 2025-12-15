@@ -24,19 +24,18 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
   if (!session) return null;
 
   const customerCashback = session.customer?.cashbackBalance || 0;
-  const maxByPercent =
-    cashbackSettings?.maxUsagePercent != null
-      ? (session.currentTotalAmount * cashbackSettings.maxUsagePercent) / 100
-      : session.currentTotalAmount;
+  const cashbackEnabled = cashbackSettings?.enabled ?? true;
+  const cashbackPercent = cashbackSettings?.percentage ?? 5;
+  const cashbackMinAmount = cashbackSettings?.minAmount ?? 1000;
+
+  // Cashback maksimal ishlatilishi (balans va maxPercent)
+  const maxByPercent = cashbackSettings?.maxUsagePercent
+    ? (session.currentTotalAmount * cashbackSettings.maxUsagePercent) / 100
+    : session.currentTotalAmount;
   const maxCashbackUsable = Math.min(customerCashback, maxByPercent);
 
-  const expectedCashback = Math.floor(
-    session.currentTotalAmount * ((cashbackSettings?.percentage ?? 5) / 100)
-  );
-  const cashbackEligible =
-    (cashbackSettings?.enabled ?? true) &&
-    session.currentTotalAmount > 0 &&
-    expectedCashback >= (cashbackSettings?.minAmount ?? 1000);
+  const expectedCashback = Math.floor(session.currentTotalAmount * (cashbackPercent / 100));
+  const cashbackEligible = cashbackEnabled && session.currentTotalAmount > 0 && expectedCashback >= cashbackMinAmount;
 
   const totalPaid = paidAmount + cashbackAmount;
   const debtAmount = Math.max(0, session.currentTotalAmount - totalPaid);
@@ -83,14 +82,13 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
       <div className="bg-white rounded-lg p-6 w-full max-w-md">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold text-gray-900">O'yinni Tugatish</h2>
-          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">
-            ×
-          </button>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-2xl">×</button>
         </div>
 
         {/* Sessiya ma'lumotlari */}
         <div className="mb-6 p-4 bg-gray-50 rounded-lg">
           <h3 className="font-medium mb-3">{session.table?.name}</h3>
+
           {session.customer && (
             <>
               <div className="flex justify-between text-sm mb-1">
@@ -103,18 +101,22 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
               </div>
             </>
           )}
+
           <div className="flex justify-between text-sm mb-1">
             <span>Davomiyligi:</span>
             <span>{Math.floor(session.currentDuration / 60)}s {session.currentDuration % 60}d</span>
           </div>
+
           <div className="flex justify-between text-sm mb-1">
             <span>O'yin summasi:</span>
             <span>{session.currentGameAmount.toLocaleString()} so'm</span>
           </div>
+
           <div className="flex justify-between text-sm mb-1">
             <span>Qo'shimcha:</span>
             <span>{session.currentAdditionalAmount.toLocaleString()} so'm</span>
           </div>
+
           <div className="flex justify-between font-medium text-lg border-t pt-2">
             <span>Jami:</span>
             <span className="text-blue-600">{session.currentTotalAmount.toLocaleString()} so'm</span>
@@ -123,7 +125,7 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
           {cashbackEligible && (
             <div className="flex flex-col gap-1 text-sm bg-green-50 border border-green-100 rounded-md px-2 py-1 text-green-700 mt-2">
               <div className="flex justify-between">
-                <span>Taxminiy cashback ({cashbackSettings?.percentage ?? 5}%)</span>
+                <span>Taxminiy cashback ({cashbackPercent}%)</span>
                 <span className="font-semibold">{expectedCashback.toLocaleString()} so'm</span>
               </div>
               <div className="flex justify-between text-xs text-green-800">
