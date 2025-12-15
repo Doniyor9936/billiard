@@ -10,6 +10,23 @@ const applicationTables = {
     hourlyRate: v.number(), // soatlik tarif
     createdAt: v.number(),
   }),
+  cashbacks: defineTable({
+    userId: v.id("users"),
+    amount: v.number(),
+    type: v.union(v.literal("earned"), v.literal("spent")),
+    source: v.string(), // "session_payment", "bonus", "refund"
+    sessionId: v.optional(v.id("sessions")),
+    description: v.string(),
+    expiresAt: v.optional(v.number()), // Amal qilish muddati
+    status: v.union(v.literal("active"), v.literal("expired"), v.literal("used")),
+    createdAt: v.number(),
+  }).index("by_user", ["userId"])
+    .index("by_user_and_status", ["userId", "status"]),
+  
+  // Users jadvaliga qo'shing:
+  cashbackBalance: v.optional(v.number()), // Joriy balans
+  totalCashbackEarned: v.optional(v.number()), // Jami topilgan
+  totalCashbackSpent: v.optional(v.number()), // Jami ishlatilgan
 
   // O'yin sessiyalari
   sessions: defineTable({

@@ -4,24 +4,73 @@ import { SignInForm } from "./SignInForm";
 import { SignOutButton } from "./SignOutButton";
 import { Toaster } from "sonner";
 import { BilliardDashboard } from "./components/BilliardDashboard";
+import { CashbackView } from "./components/CashbackView";
+import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-dom";
+import { Wallet, LayoutDashboard } from "lucide-react";
 
 export default function App() {
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-sm h-16 flex justify-between items-center border-b shadow-sm px-4">
-        <h2 className="text-xl font-semibold text-blue-600">Billiardxona Admin Panel</h2>
+    <BrowserRouter>
+      <div className="min-h-screen flex flex-col bg-gray-50">
+        <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-sm h-16 flex justify-between items-center border-b shadow-sm px-4">
+          <h2 className="text-xl font-semibold text-blue-600">Billiardxona Admin Panel</h2>
+          <Authenticated>
+            <div className="flex items-center space-x-4">
+              <UserInfo />
+              <SignOutButton />
+            </div>
+          </Authenticated>
+        </header>
+        
+        {/* Navigation Menu */}
         <Authenticated>
-          <div className="flex items-center space-x-4">
-            <UserInfo />
-            <SignOutButton />
-          </div>
+          <Navigation />
         </Authenticated>
-      </header>
-      <main className="flex-1">
-        <Content />
-      </main>
-      <Toaster />
-    </div>
+
+        <main className="flex-1">
+          <Content />
+        </main>
+        <Toaster />
+      </div>
+    </BrowserRouter>
+  );
+}
+
+function Navigation() {
+  const location = useLocation();
+  
+  const isActive = (path: string) => location.pathname === path;
+  
+  return (
+    <nav className="bg-white border-b shadow-sm">
+      <div className="max-w-7xl mx-auto px-4">
+        <div className="flex space-x-1">
+          <Link
+            to="/"
+            className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors ${
+              isActive("/")
+                ? "text-blue-600 border-b-2 border-blue-600"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <LayoutDashboard className="w-5 h-5" />
+            Dashboard
+          </Link>
+          
+          <Link
+            to="/cashback"
+            className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors ${
+              isActive("/cashback")
+                ? "text-green-600 border-b-2 border-green-600"
+                : "text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            <Wallet className="w-5 h-5" />
+            Cashback
+          </Link>
+        </div>
+      </div>
+    </nav>
   );
 }
 
@@ -51,7 +100,10 @@ function Content() {
   return (
     <div className="flex flex-col">
       <Authenticated>
-        <BilliardDashboard />
+        <Routes>
+          <Route path="/" element={<BilliardDashboard />} />
+          <Route path="/cashback" element={<CashbackView />} />
+        </Routes>
       </Authenticated>
       
       <Unauthenticated>
