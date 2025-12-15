@@ -121,6 +121,7 @@ export const completeSession = mutation({
     sessionId: v.id("sessions"),
     paidAmount: v.number(),
     paymentType: v.union(v.literal("cash"), v.literal("card"), v.literal("debt")),
+    cashbackAmount: v.optional(v.number()),
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -154,7 +155,26 @@ export const completeSession = mutation({
 
     const additionalAmount = additionalOrders.reduce((sum, order) => sum + order.totalPrice, 0);
     const totalAmount = gameAmount + additionalAmount;
-    const debtAmount = Math.max(0, totalAmount - args.paidAmount);
+
+    const cashbackAmount = args.cashbackAmount ?? 0;
+    if (cashbackAmount < 0) {
+      throw new Error("Cashback summasi manfiy bo'lishi mumkin emas");
+    }
+
+    // Agar cashback ishlatilsa, mijoz balansidan yechib qo'yamiz
+    if (cashbackAmount > 0) {
+      if (!session.customerId) {
+        throw new Error("Cashback ishlatish uchun sessiyaga mijoz biriktirilgan bo'lishi kerak");
+      }
+
+      await ctx.runMutation(api.cashbacks.useCashback, {
+        amount: cashbackAmount,
+        sessionId: args.sessionId,
+      });
+    }
+
+    const effectivePaid = args.paidAmount + cashbackAmount;
+    const debtAmount = Math.max(0, totalAmount - effectivePaid);
 
     // Sessiyani yangilash
     await ctx.db.patch(args.sessionId, {
@@ -164,6 +184,7 @@ export const completeSession = mutation({
       additionalAmount,
       totalAmount,
       paidAmount: args.paidAmount,
+      cashbackUsed: cashbackAmount > 0 ? cashbackAmount : undefined,
       debtAmount,
       status: "completed",
       completedBy: userId,

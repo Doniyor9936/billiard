@@ -40,6 +40,7 @@ const applicationTables = {
     additionalAmount: v.optional(v.number()), // qo'shimcha buyurtmalar
     totalAmount: v.optional(v.number()), // umumiy summa
     paidAmount: v.optional(v.number()), // to'langan summa
+    cashbackUsed: v.optional(v.number()), // cashback orqali yopilgan summa
     debtAmount: v.optional(v.number()), // qarz summasi
     status: v.union(v.literal("active"), v.literal("completed")),
     completedBy: v.optional(v.id("users")), // sessiyani yakunlagan admin

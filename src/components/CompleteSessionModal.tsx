@@ -15,10 +15,11 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
 
   const [paidAmount, setPaidAmount] = useState(0);
   const [paymentType, setPaymentType] = useState<"cash" | "card" | "debt">("cash");
+  const [cashbackAmount, setCashbackAmount] = useState(0);
   const [notes, setNotes] = useState("");
   const [isCompleting, setIsCompleting] = useState(false);
 
-  const session = activeSessions?.find(s => s._id === sessionId);
+  const session = activeSessions?.find((s) => s._id === sessionId);
 
   const handleComplete = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,8 +30,21 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
       return;
     }
 
-    if (paidAmount > session.currentTotalAmount) {
-      toast.error("To'lov summasi umumiy summadan ko'p bo'lishi mumkin emas");
+    if (cashbackAmount < 0) {
+      toast.error("Cashback summasi manfiy bo'lishi mumkin emas");
+      return;
+    }
+
+    const totalToPay = paidAmount + cashbackAmount;
+    if (totalToPay > session.currentTotalAmount) {
+      toast.error("To'lov + cashback umumiy summadan ko'p bo'lishi mumkin emas");
+      return;
+    }
+
+    const maxCashback =
+      Math.min(session.customer?.cashbackBalance || 0, session.currentTotalAmount);
+    if (cashbackAmount > maxCashback) {
+      toast.error("Kiritilgan cashback mijoz balansidan ko'p");
       return;
     }
 
@@ -40,6 +54,7 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
         sessionId,
         paidAmount,
         paymentType,
+        cashbackAmount: cashbackAmount || undefined,
         notes: notes.trim() || undefined,
       });
 
@@ -56,7 +71,12 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
     return null;
   }
 
-  const debtAmount = Math.max(0, session.currentTotalAmount - paidAmount);
+  const debtAmount = Math.max(
+    0,
+    session.currentTotalAmount - (paidAmount + cashbackAmount),
+  );
+  const customerCashback = session.customer?.cashbackBalance || 0;
+  const maxCashbackUsable = Math.min(customerCashback, session.currentTotalAmount);
   const expectedCashback = Math.floor(session.currentTotalAmount * 0.05);
   const cashbackEligible = expectedCashback >= 1000 && session.currentTotalAmount > 0;
 
@@ -82,6 +102,12 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
               <div className="flex justify-between">
                 <span className="text-gray-600">Mijoz:</span>
                 <span>{session.customer.name}</span>
+              </div>
+            )}
+            {session.customer && (
+              <div className="flex justify-between">
+                <span className="text-gray-600">Cashback balansi:</span>
+                <span>{customerCashback.toLocaleString()} so'm</span>
               </div>
             )}
             
@@ -146,6 +172,54 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
                 </button>
               </div>
             </div>
+
+            {customerCashback > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Cashbackdan foydalanish (so'm)
+                </label>
+                <input
+                  type="number"
+                  value={cashbackAmount}
+                  onChange={(e) =>
+                    setCashbackAmount(
+                      Math.max(
+                        0,
+                        Math.min(
+                          maxCashbackUsable,
+                          parseInt(e.target.value || "0", 10) || 0,
+                        ),
+                      ),
+                    )
+                  }
+                  className="w-full px-3 py-2 border border-green-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  min={0}
+                  max={maxCashbackUsable}
+                />
+                <div className="mt-1 flex space-x-2 text-xs text-gray-600">
+                  <button
+                    type="button"
+                    onClick={() => setCashbackAmount(maxCashbackUsable)}
+                    className="bg-green-100 text-green-700 px-2 py-1 rounded"
+                  >
+                    Maksimal
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCashbackAmount(0)}
+                    className="bg-gray-100 text-gray-700 px-2 py-1 rounded"
+                  >
+                    Cashbackni ishlatmaslik
+                  </button>
+                  <span className="ml-auto">
+                    Qoladi:{" "}
+                    {(customerCashback - cashbackAmount)
+                      .toLocaleString()}{" "}
+                    so'm
+                  </span>
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
