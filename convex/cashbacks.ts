@@ -18,12 +18,21 @@ export const getBalance = query({
     const userId = await getAuthUserId(ctx);
     if (!userId) return null;
 
+    // Asosiy (yangi) yozuvlar
     const cashbacks = await ctx.db
       .query("cashbacks")
       .withIndex("by_account", (q) => q.eq("accountId", userId))
       .collect();
 
-    const totals = cashbacks.reduce(
+    // Legacy (accountId bo'lmagan eski yozuvlar) uchun zaxira
+    const legacyCashbacks = await ctx.db
+      .query("cashbacks")
+      .filter((q) => q.eq(q.field("userId"), userId))
+      .collect();
+
+    const allCashbacks = [...cashbacks, ...legacyCashbacks];
+
+    const totals = allCashbacks.reduce(
       (acc, cb) => {
         if (cb.type === "earned" && cb.status !== "expired") {
           acc.balance += cb.amount;
@@ -51,13 +60,28 @@ export const getHistory = query({
     const userId = await getAuthUserId(ctx);
     if (!userId) return [];
 
+    const limit = args.limit || 50;
+
+    // Asosiy (yangi) yozuvlar
     const cashbacks = await ctx.db
       .query("cashbacks")
       .withIndex("by_account", (q) => q.eq("accountId", userId))
       .order("desc")
-      .take(args.limit || 50);
+      .take(limit);
 
-    return cashbacks;
+    // Legacy (accountId bo'lmagan eski yozuvlar) uchun zaxira
+    const legacyCashbacks = await ctx.db
+      .query("cashbacks")
+      .filter((q) => q.eq(q.field("userId"), userId))
+      .order("desc")
+      .take(limit);
+
+    // Birlashtirish va so'nggi limitni olish
+    const combined = [...cashbacks, ...legacyCashbacks]
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))
+      .slice(0, limit);
+
+    return combined;
   },
 });
 
