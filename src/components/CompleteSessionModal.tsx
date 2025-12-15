@@ -9,63 +9,52 @@ interface CompleteSessionModalProps {
   onClose: () => void;
 }
 
-
-export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModalProps) {
+export function CompleteSessionModal({
+  sessionId,
+  onClose,
+}: CompleteSessionModalProps) {
   const activeSessions = useQuery(api.sessions.getActiveSessions);
   const cashbackSettings = useQuery(api.cashbacks.getSettings);
   const completeSession = useMutation(api.sessions.completeSession);
 
   const [paidAmount, setPaidAmount] = useState(0);
-  const [paymentType, setPaymentType] = useState<"cash" | "card" | "debt">("cash");
+  const [paymentType, setPaymentType] =
+    useState<"cash" | "card" | "debt">("cash");
   const [cashbackAmount, setCashbackAmount] = useState(0);
   const [notes, setNotes] = useState("");
   const [isCompleting, setIsCompleting] = useState(false);
 
   const session = activeSessions?.find((s) => s._id === sessionId);
+  if (!session) return null;
 
+  const customerCashback = session.customer?.cashbackBalance || 0;
+  const debtAmount = Math.max(
+    0,
+    session.currentTotalAmount - (paidAmount + cashbackAmount)
+  );
 
-  const handleComplete = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleComplete = async () => {
+    if (isCompleting) return;
 
-    if (!session) return;
-
-    if (paidAmount < 0) {
-      toast.error("To'lov summasi manfiy bo'lishi mumkin emas");
+    if (paidAmount < 0 || cashbackAmount < 0) {
+      toast.error("Manfiy summa kiritib bo‘lmaydi");
       return;
     }
 
-    if (cashbackAmount < 0) {
-      toast.error("Cashback summasi manfiy bo'lishi mumkin emas");
+    if (paidAmount + cashbackAmount > session.currentTotalAmount) {
+      toast.error("To‘lov umumiy summadan oshib ketdi");
       return;
     }
 
-    // Agar cashback tizimi o'chirilgan bo'lsa, bonus ishlatilmasin
-    const cashbackEnabled = cashbackSettings?.enabled ?? true;
-    const cashbackPercent = cashbackSettings?.percentage ?? 5;
-    const cashbackMinAmount = cashbackSettings?.minAmount ?? 1000;
-
-    const totalToPay = paidAmount + cashbackAmount;
-    if (totalToPay > session.currentTotalAmount) {
-      toast.error("To'lov + cashback umumiy summadan ko'p bo'lishi mumkin emas");
-      return;
-    }
-
-    const maxCashback =
-      Math.min(session.customer?.cashbackBalance || 0, session.currentTotalAmount);
-    if (cashbackAmount > maxCashback) {
-      toast.error("Kiritilgan cashback mijoz balansidan ko'p");
-      return;
-    }
-
-    // Tizim o'chirilgan bo'lsa, cashbackdan foydalanmaymiz
-    if (!cashbackEnabled && cashbackAmount > 0) {
-      toast.error("Cashback tizimi o'chirilgan, bonus ishlatib bo'lmaydi");
+    if (cashbackAmount > customerCashback) {
+      toast.error("Cashback balansi yetarli emas");
       return;
     }
 
     try {
       setIsCompleting(true);
-      const result = await completeSession({
+
+      const res = await completeSession({
         sessionId,
         paidAmount,
         paymentType,
@@ -73,275 +62,100 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
         notes: notes.trim() || undefined,
       });
 
-      toast.success("Sessiya muvaffaqiyatli yakunlandi!");
-      onClose();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Xatolik yuz berdi");
+      if (!res?.success) {
+        toast.error(res?.message || "Xatolik yuz berdi");
+        return;
+      }
+
+      toast.success("Sessiya muvaffaqiyatli yakunlandi");
+      onClose(); // 🔥 faqat modal yopiladi
+    } catch {
+      toast.error("Server xatosi");
     } finally {
       setIsCompleting(false);
     }
   };
 
-  if (!session) {
-    return null;
-  }
-
-  const debtAmount = Math.max(
-    0,
-    session.currentTotalAmount - (paidAmount + cashbackAmount),
-  );
-  const customerCashback = session.customer?.cashbackBalance || 0;
-  const maxByPercent =
-    cashbackSettings && cashbackSettings.maxUsagePercent != null
-      ? (session.currentTotalAmount * cashbackSettings.maxUsagePercent) / 100
-      : session.currentTotalAmount;
-  const maxCashbackUsable = Math.min(customerCashback, maxByPercent);
-
-  const expectedCashback = Math.floor(
-    session.currentTotalAmount * ((cashbackSettings?.percentage ?? 5) / 100),
-  );
-  const cashbackEligible =
-    (cashbackSettings?.enabled ?? true) &&
-    session.currentTotalAmount > 0 &&
-    expectedCashback >= (cashbackSettings?.minAmount ?? 1000);
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-md">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold text-gray-900">O'yinni Tugatish</h2>
+        <h2 className="text-xl font-bold mb-4">O‘yinni tugatish</h2>
+
+        {/* Summalar */}
+        <div className="space-y-2 text-sm mb-4">
+          <div className="flex justify-between">
+            <span>Jami:</span>
+            <span className="font-semibold">
+              {session.currentTotalAmount.toLocaleString()} so‘m
+            </span>
+          </div>
+          
+          <div className="flex justify-between">
+            <span>- Cashback:</span>
+            <span className="text-green-600">
+              {cashbackAmount.toLocaleString()} so‘m
+            </span>
+          </div>
+          <div className="flex justify-between">
+            <span>- To‘lov:</span>
+            <span className="text-blue-600">
+              {paidAmount.toLocaleString()} so‘m
+            </span>
+          </div>
+          <div className="flex justify-between font-semibold border-t pt-2">
+            <span>Qarz:</span>
+            <span className="text-red-600">
+              {debtAmount.toLocaleString()} so‘m
+            </span>
+          </div>
+        </div>
+
+        {/* To‘lov */}
+        <input
+          type="number"
+          className="w-full border p-2 rounded mb-2"
+          value={paidAmount}
+          onChange={(e) => setPaidAmount(Number(e.target.value) || 0)}
+          placeholder="To‘lov summasi"
+        />
+
+        {/* Cashback */}
+        {customerCashback > 0 && (
+          <input
+            type="number"
+            className="w-full border p-2 rounded mb-2"
+            value={cashbackAmount}
+            onChange={(e) =>
+              setCashbackAmount(
+                Math.min(
+                  customerCashback,
+                  Number(e.target.value) || 0
+                )
+              )
+            }
+            placeholder="Cashback ishlatish"
+          />
+        )}
+
+        {/* Tugmalar */}
+        <div className="flex gap-3 mt-4">
           <button
+            type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 text-2xl"
+            className="flex-1 bg-gray-300 py-2 rounded"
           >
-            ×
+            Bekor qilish
+          </button>
+
+          <button
+            type="button"
+            onClick={handleComplete}
+            disabled={isCompleting}
+            className="flex-1 bg-red-600 text-white py-2 rounded disabled:opacity-50"
+          >
+            {isCompleting ? "Yakunlanmoqda..." : "Tugatish"}
           </button>
         </div>
-
-        {/* Sessiya ma'lumotlari */}
-        <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-          <h3 className="font-medium mb-3">{session.table?.name}</h3>
-          
-          <div className="space-y-2 text-sm">
-            {session.customer && (
-              <div className="flex justify-between">
-                <span className="text-gray-600">Mijoz:</span>
-                <span>{session.customer.name}</span>
-              </div>
-            )}
-            {session.customer && (
-              <div className="flex justify-between">
-                <span className="text-gray-600">Cashback balansi:</span>
-                <span>{customerCashback.toLocaleString()} so'm</span>
-              </div>
-            )}
-            
-            <div className="flex justify-between">
-              <span className="text-gray-600">Davomiyligi:</span>
-              <span>{Math.floor(session.currentDuration / 60)}s {session.currentDuration % 60}d</span>
-            </div>
-            
-            <div className="flex justify-between">
-              <span className="text-gray-600">O'yin summasi:</span>
-              <span>{session.currentGameAmount.toLocaleString()} so'm</span>
-            </div>
-            
-            <div className="flex justify-between">
-              <span className="text-gray-600">Qo'shimcha:</span>
-              <span>{session.currentAdditionalAmount.toLocaleString()} so'm</span>
-            </div>
-            
-            <div className="flex justify-between font-medium text-lg border-t pt-2">
-              <span>Jami:</span>
-              <span className="text-blue-600">{session.currentTotalAmount.toLocaleString()} so'm</span>
-            </div>
-
-            {cashbackEligible && (
-              <div className="flex flex-col gap-1 text-sm bg-green-50 border border-green-100 rounded-md px-2 py-1 text-green-700">
-                <div className="flex justify-between">
-                  <span>Taxminiy cashback (5%)</span>
-                  <span className="font-semibold">
-                    +{expectedCashback.toLocaleString()} so'm
-                  </span>
-                </div>
-                <div className="flex justify-between text-xs text-green-800">
-                  <span>Yangi cashback balansi (taxminan)</span>
-                  <span>
-                    {(customerCashback + expectedCashback).toLocaleString()} so'm
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* To'lov ma'lumotlari */}
-        <form onSubmit={handleComplete}>
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                To'lov summasi (so'm)
-              </label>
-              <input
-                type="number"
-                value={paidAmount}
-                onChange={(e) =>
-                  setPaidAmount(Math.max(0, parseInt(e.target.value || "0", 10) || 0))
-                }
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                min="0"
-                max={session.currentTotalAmount}
-              />
-              <div className="mt-1 flex space-x-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    // To'liq to'lash: naqd/karta bilan to'liq yopish, cashbackni ishlatmaslik
-                    setCashbackAmount(0);
-                    setPaidAmount(session.currentTotalAmount);
-                    setPaymentType("cash");
-                  }}
-                  className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded"
-                >
-                  To'liq to'lash
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    // To'liq qarzga yozish: to'lov va cashback ishlatilmaydi
-                    setPaidAmount(0);
-                    setCashbackAmount(0);
-                    setPaymentType("debt");
-                  }}
-                  className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded"
-                >
-                  Qarzga yozish
-                </button>
-              </div>
-            </div>
-
-            {customerCashback > 0 && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Cashbackdan foydalanish (so'm)
-                </label>
-                <input
-                  type="number"
-                  value={cashbackAmount}
-                  onChange={(e) =>
-                    setCashbackAmount(
-                      Math.max(
-                        0,
-                        Math.min(
-                          maxCashbackUsable,
-                          parseInt(e.target.value || "0", 10) || 0,
-                        ),
-                      ),
-                    )
-                  }
-                  className="w-full px-3 py-2 border border-green-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
-                  min={0}
-                  max={maxCashbackUsable}
-                />
-                <div className="mt-1 flex space-x-2 text-xs text-gray-600">
-                  <button
-                    type="button"
-                    onClick={() => setCashbackAmount(maxCashbackUsable)}
-                    className="bg-green-100 text-green-700 px-2 py-1 rounded"
-                  >
-                    Maksimal
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCashbackAmount(0)}
-                    className="bg-gray-100 text-gray-700 px-2 py-1 rounded"
-                  >
-                    Cashbackni ishlatmaslik
-                  </button>
-                  <span className="ml-auto">
-                    Qoladi:{" "}
-                    {(customerCashback - cashbackAmount)
-                      .toLocaleString()}{" "}
-                    so'm
-                  </span>
-                </div>
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                To'lov turi
-              </label>
-              <select
-                value={paymentType}
-                onChange={(e) => setPaymentType(e.target.value as "cash" | "card" | "debt")}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="cash">Naqd</option>
-                <option value="card">Karta</option>
-                <option value="debt">Qarz</option>
-              </select>
-            </div>
-
-            {/* Cashback bilan hisoblash bo'limi */}
-            <div className="p-3 bg-gray-50 border border-gray-200 rounded-md space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Jami hisob:</span>
-                <span className="font-medium">
-                  {session.currentTotalAmount.toLocaleString()} so'm
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">- Cashback:</span>
-                <span className="font-medium text-green-700">
-                  {cashbackAmount > 0 ? `-${cashbackAmount.toLocaleString()} so'm` : "0 so'm"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-600">- To'lov (naqd/karta):</span>
-                <span className="font-medium text-blue-700">
-                  {paidAmount > 0 ? `-${paidAmount.toLocaleString()} so'm` : "0 so'm"}
-                </span>
-              </div>
-              <div className="flex justify-between border-t pt-1 mt-1">
-                <span className="font-semibold">Qarz summasi:</span>
-                <span className="font-semibold text-yellow-700">
-                  {debtAmount.toLocaleString()} so'm
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Izoh (ixtiyoriy)
-              </label>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                rows={3}
-                placeholder="Qo'shimcha izohlar..."
-              />
-            </div>
-          </div>
-
-          <div className="mt-6 flex space-x-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-400 transition-colors"
-            >
-              Bekor qilish
-            </button>
-            <button
-              type="submit"
-              disabled={isCompleting}
-              className="flex-1 bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
-            >
-              {isCompleting ? "Tugallanmoqda..." : "O'yinni Tugatish"}
-            </button>
-          </div>
-        </form>
       </div>
     </div>
   );
