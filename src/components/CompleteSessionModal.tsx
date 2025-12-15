@@ -57,6 +57,8 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
   }
 
   const debtAmount = Math.max(0, session.currentTotalAmount - paidAmount);
+  const expectedCashback = Math.floor(session.currentTotalAmount * 0.05);
+  const cashbackEligible = expectedCashback >= 1000 && session.currentTotalAmount > 0;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -102,6 +104,13 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
               <span>Jami:</span>
               <span className="text-blue-600">{session.currentTotalAmount.toLocaleString()} so'm</span>
             </div>
+
+            {cashbackEligible && (
+              <div className="flex justify-between text-sm text-green-700 bg-green-50 border border-green-100 rounded-md px-2 py-1">
+                <span>Taxminiy cashback (5%)</span>
+                <span className="font-semibold">+{expectedCashback.toLocaleString()} so'm</span>
+              </div>
+            )}
           </div>
         </div>
 
