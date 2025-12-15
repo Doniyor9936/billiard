@@ -25,7 +25,7 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
 
   const customerCashback = session.customer?.cashbackBalance || 0;
   const maxByPercent =
-    cashbackSettings && cashbackSettings.maxUsagePercent != null
+    cashbackSettings?.maxUsagePercent != null
       ? (session.currentTotalAmount * cashbackSettings.maxUsagePercent) / 100
       : session.currentTotalAmount;
   const maxCashbackUsable = Math.min(customerCashback, maxByPercent);
@@ -41,27 +41,25 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
   const totalPaid = paidAmount + cashbackAmount;
   const debtAmount = Math.max(0, session.currentTotalAmount - totalPaid);
 
-  const handleComplete = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault(); // MUHIM: sahifa reload bo‘lishining oldini oladi
-
-    if (!session) return;
-    if (paidAmount < 0 || cashbackAmount < 0) {
-      toast.error("To'lov yoki cashback manfiy bo'lishi mumkin emas");
-      return;
-    }
-
-    if (totalPaid > session.currentTotalAmount) {
-      toast.error("To'lov + cashback umumiy summadan ko'p bo'lishi mumkin emas");
-      return;
-    }
-
-    if (cashbackAmount > maxCashbackUsable) {
-      toast.error("Kiritilgan cashback mijoz balansidan ko'p");
-      return;
-    }
-
+  const handleComplete = async () => {
     try {
       setIsCompleting(true);
+
+      if (paidAmount < 0 || cashbackAmount < 0) {
+        toast.error("To'lov yoki cashback manfiy bo'lishi mumkin emas");
+        return;
+      }
+
+      if (totalPaid > session.currentTotalAmount) {
+        toast.error("To'lov + cashback umumiy summadan ko'p bo'lishi mumkin emas");
+        return;
+      }
+
+      if (cashbackAmount > maxCashbackUsable) {
+        toast.error("Kiritilgan cashback mijoz balansidan ko'p");
+        return;
+      }
+
       await completeSession({
         sessionId,
         paidAmount,
@@ -73,6 +71,7 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
       toast.success("Sessiya muvaffaqiyatli yakunlandi!");
       onClose();
     } catch (error) {
+      console.error(error);
       toast.error(error instanceof Error ? error.message : "Xatolik yuz berdi");
     } finally {
       setIsCompleting(false);
@@ -89,6 +88,7 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
           </button>
         </div>
 
+        {/* Sessiya ma'lumotlari */}
         <div className="mb-6 p-4 bg-gray-50 rounded-lg">
           <h3 className="font-medium mb-3">{session.table?.name}</h3>
           {session.customer && (
@@ -134,7 +134,7 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
           )}
         </div>
 
-        {/* To‘lov va cashback bo‘limi */}
+        {/* To‘lov va cashback */}
         <div className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">To'lov summasi (so'm)</label>
@@ -155,9 +155,7 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
                 type="number"
                 value={cashbackAmount}
                 onChange={(e) =>
-                  setCashbackAmount(
-                    Math.max(0, Math.min(maxCashbackUsable, parseInt(e.target.value || "0", 10) || 0))
-                  )
+                  setCashbackAmount(Math.max(0, Math.min(maxCashbackUsable, parseInt(e.target.value || "0", 10) || 0)))
                 }
                 className="w-full px-3 py-2 border border-green-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
                 min={0}
