@@ -65,7 +65,6 @@ export const getHistory = query({
 export const earnFromSession = mutation({
   args: {
     sessionId: v.id("sessions"),
-    sessionAmount: v.number(),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
@@ -80,8 +79,14 @@ export const earnFromSession = mutation({
       throw new Error("Sessiya uchun mijoz talab qilinadi");
     }
 
-    // Cashback miqdorini hisoblash
-    const cashbackAmount = Math.floor((args.sessionAmount * CASHBACK_PERCENTAGE) / 100);
+    // Cashback bazasi faqat o'yin summasi (gameAmount) bo'yicha
+    const baseAmount = session.gameAmount || 0;
+    if (baseAmount <= 0) {
+      return null;
+    }
+
+    // Cashback miqdorini hisoblash (5%)
+    const cashbackAmount = Math.floor((baseAmount * CASHBACK_PERCENTAGE) / 100);
 
     // Minimal miqdordan kam bo'lsa, berilmaydi
     if (cashbackAmount < MIN_CASHBACK_AMOUNT) {
@@ -99,13 +104,13 @@ export const earnFromSession = mutation({
       type: "earned",
       source: "session_payment",
       sessionId: args.sessionId,
-      description: `${CASHBACK_PERCENTAGE}% cashback (${args.sessionAmount.toLocaleString()} so'mdan)`,
+      description: `${CASHBACK_PERCENTAGE}% cashback (${baseAmount.toLocaleString()} so'mdan)`,
       expiresAt,
       status: "active",
       createdAt: Date.now(),
     });
 
-    // Foydalanuvchi balansini yangilash
+    // Mijoz cashback balansini yangilash
     const customer = await ctx.db.get(session.customerId);
     if (customer) {
       await ctx.db.patch(session.customerId, {
