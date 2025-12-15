@@ -11,14 +11,19 @@ export const getAllTables = query({
       throw new Error("Tizimga kirish talab qilinadi");
     }
 
-    const tables = await ctx.db.query("tables").collect();
+    const tables = await ctx.db
+      .query("tables")
+      .withIndex("by_account", (q) => q.eq("accountId", userId))
+      .collect();
     
     // Har bir stol uchun faol sessiyani tekshirish
     const tablesWithStatus = await Promise.all(
       tables.map(async (table) => {
         const activeSession = await ctx.db
           .query("sessions")
-          .withIndex("by_table", (q) => q.eq("tableId", table._id))
+          .withIndex("by_account_and_table", (q) =>
+            q.eq("accountId", userId).eq("tableId", table._id),
+          )
           .filter((q) => q.eq(q.field("status"), "active"))
           .first();
 
@@ -47,6 +52,7 @@ export const createTable = mutation({
     }
 
     return await ctx.db.insert("tables", {
+      accountId: userId,
       name: args.name,
       hourlyRate: args.hourlyRate,
       isActive: true,
@@ -70,6 +76,10 @@ export const updateTableRate = mutation({
     const table = await ctx.db.get(args.tableId);
     if (!table) {
       throw new Error("Stol topilmadi");
+    }
+
+    if (table.accountId !== userId) {
+      throw new Error("Bu stol boshqa akkauntga tegishli");
     }
 
     // Tarif tarixini saqlash
@@ -106,6 +116,10 @@ export const toggleTableStatus = mutation({
       throw new Error("Stol topilmadi");
     }
 
+    if (table.accountId !== userId) {
+      throw new Error("Bu stol boshqa akkauntga tegishli");
+    }
+
     await ctx.db.patch(args.tableId, {
       isActive: !table.isActive,
     });
@@ -130,10 +144,16 @@ export const deleteTable = mutation({
       throw new Error("Stol topilmadi");
     }
 
+    if (table.accountId !== userId) {
+      throw new Error("Bu stol boshqa akkauntga tegishli");
+    }
+
     // Faol sessiya borligini tekshirish
     const activeSession = await ctx.db
       .query("sessions")
-      .withIndex("by_table", (q) => q.eq("tableId", args.tableId))
+      .withIndex("by_account_and_table", (q) =>
+        q.eq("accountId", userId).eq("tableId", args.tableId),
+      )
       .filter((q) => q.eq(q.field("status"), "active"))
       .first();
 

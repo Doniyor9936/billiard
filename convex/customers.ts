@@ -11,7 +11,11 @@ export const getAllCustomers = query({
       throw new Error("Tizimga kirish talab qilinadi");
     }
 
-    return await ctx.db.query("customers").order("desc").collect();
+    return await ctx.db
+      .query("customers")
+      .withIndex("by_account", (q) => q.eq("accountId", userId))
+      .order("desc")
+      .collect();
   },
 });
 
@@ -28,6 +32,7 @@ export const createCustomer = mutation({
     }
 
     return await ctx.db.insert("customers", {
+      accountId: userId,
       name: args.name,
       phone: args.phone,
       totalDebt: 0,
@@ -54,6 +59,10 @@ export const payCustomerDebt = mutation({
       throw new Error("Mijoz topilmadi");
     }
 
+    if (customer.accountId !== userId) {
+      throw new Error("Mijoz boshqa akkauntga tegishli");
+    }
+
     if (args.amount > customer.totalDebt) {
       throw new Error("To'lov summasi qarz summasidan ko'p");
     }
@@ -65,6 +74,7 @@ export const payCustomerDebt = mutation({
 
     // To'lovni qayd qilish
     await ctx.db.insert("payments", {
+      accountId: userId,
       customerId: args.customerId,
       amount: args.amount,
       paymentType: "debt_payment",

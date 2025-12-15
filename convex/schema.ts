@@ -5,13 +5,15 @@ import { authTables } from "@convex-dev/auth/server";
 const applicationTables = {
   // Stollar jadvali
   tables: defineTable({
+    accountId: v.id("users"),
     name: v.string(),
     isActive: v.boolean(),
     hourlyRate: v.number(), // soatlik tarif
     createdAt: v.number(),
-  }),
+  }).index("by_account", ["accountId"]),
   cashbacks: defineTable({
-    userId: v.id("users"),
+    accountId: v.id("users"),
+    customerId: v.optional(v.id("customers")),
     amount: v.number(),
     type: v.union(v.literal("earned"), v.literal("spent")),
     source: v.string(), // "session_payment", "bonus", "refund"
@@ -20,16 +22,14 @@ const applicationTables = {
     expiresAt: v.optional(v.number()), // Amal qilish muddati
     status: v.union(v.literal("active"), v.literal("expired"), v.literal("used")),
     createdAt: v.number(),
-  }).index("by_user", ["userId"])
-    .index("by_user_and_status", ["userId", "status"]),
-  
-  // Users jadvaliga qo'shing:
-  cashbackBalance: v.optional(v.number()), // Joriy balans
-  totalCashbackEarned: v.optional(v.number()), // Jami topilgan
-  totalCashbackSpent: v.optional(v.number()), // Jami ishlatilgan
+  })
+    .index("by_account", ["accountId"])
+    .index("by_account_and_status", ["accountId", "status"])
+    .index("by_account_and_customer", ["accountId", "customerId"]),
 
   // O'yin sessiyalari
   sessions: defineTable({
+    accountId: v.id("users"),
     tableId: v.id("tables"),
     customerId: v.optional(v.id("customers")), // Eski ma'lumotlar uchun optional qilinadi
     startTime: v.number(),
@@ -45,30 +45,37 @@ const applicationTables = {
     completedBy: v.optional(v.id("users")), // sessiyani yakunlagan admin
     notes: v.optional(v.string()),
   })
-    .index("by_table", ["tableId"])
-    .index("by_status", ["status"])
-    .index("by_customer", ["customerId"]),
+    .index("by_account_and_table", ["accountId", "tableId"])
+    .index("by_account_and_status", ["accountId", "status"])
+    .index("by_account_and_customer", ["accountId", "customerId"]),
 
   // Mijozlar
   customers: defineTable({
+    accountId: v.id("users"),
     name: v.string(),
     phone: v.optional(v.string()),
     totalDebt: v.number(),
     createdAt: v.number(),
-  }),
+    cashbackBalance: v.optional(v.number()),
+    totalCashbackEarned: v.optional(v.number()),
+    totalCashbackSpent: v.optional(v.number()),
+  }).index("by_account", ["accountId"]),
 
   // Qo'shimcha buyurtmalar
   additionalOrders: defineTable({
+    accountId: v.id("users"),
     sessionId: v.id("sessions"),
     itemName: v.string(),
     quantity: v.number(),
     unitPrice: v.number(),
     totalPrice: v.number(),
     createdAt: v.number(),
-  }).index("by_session", ["sessionId"]),
+  }).index("by_session", ["sessionId"])
+    .index("by_account", ["accountId"]),
 
   // To'lovlar tarixi
   payments: defineTable({
+    accountId: v.id("users"),
     sessionId: v.optional(v.id("sessions")),
     customerId: v.optional(v.id("customers")),
     amount: v.number(),
@@ -78,16 +85,20 @@ const applicationTables = {
     createdAt: v.number(),
   })
     .index("by_session", ["sessionId"])
-    .index("by_customer", ["customerId"]),
+    .index("by_customer", ["customerId"])
+    .index("by_account", ["accountId"]),
 
   // Tariflar tarixi
   rateHistory: defineTable({
+    accountId: v.id("users"),
     tableId: v.id("tables"),
     oldRate: v.number(),
     newRate: v.number(),
     changedBy: v.id("users"),
     changedAt: v.number(),
-  }).index("by_table", ["tableId"]),
+  })
+    .index("by_table", ["tableId"])
+    .index("by_account", ["accountId"]),
 };
 
 export default defineSchema({

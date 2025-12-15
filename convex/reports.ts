@@ -19,7 +19,9 @@ export const getDailyReport = query({
     // Kun davomida yakunlangan sessiyalar
     const completedSessions = await ctx.db
       .query("sessions")
-      .withIndex("by_status", (q) => q.eq("status", "completed"))
+      .withIndex("by_account_and_status", (q) =>
+        q.eq("accountId", userId).eq("status", "completed"),
+      )
       .filter((q) => 
         q.and(
           q.gte(q.field("endTime"), startOfDay),
@@ -31,6 +33,7 @@ export const getDailyReport = query({
     // Kun davomidagi to'lovlar
     const payments = await ctx.db
       .query("payments")
+      .withIndex("by_account", (q) => q.eq("accountId", userId))
       .filter((q) => 
         q.and(
           q.gte(q.field("createdAt"), startOfDay),
@@ -82,11 +85,16 @@ export const getOverallStats = query({
     // Faol sessiyalar soni
     const activeSessions = await ctx.db
       .query("sessions")
-      .withIndex("by_status", (q) => q.eq("status", "active"))
+      .withIndex("by_account_and_status", (q) =>
+        q.eq("accountId", userId).eq("status", "active"),
+      )
       .collect();
 
     // Umumiy qarzlar
-    const customers = await ctx.db.query("customers").collect();
+    const customers = await ctx.db
+      .query("customers")
+      .withIndex("by_account", (q) => q.eq("accountId", userId))
+      .collect();
     const totalDebt = customers.reduce((sum, customer) => sum + customer.totalDebt, 0);
 
     // Bugungi tushum
@@ -96,6 +104,7 @@ export const getOverallStats = query({
 
     const todayPayments = await ctx.db
       .query("payments")
+      .withIndex("by_account", (q) => q.eq("accountId", userId))
       .filter((q) => 
         q.and(
           q.gte(q.field("createdAt"), startOfDay),

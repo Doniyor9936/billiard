@@ -14,7 +14,9 @@ export const getActiveSessions = query({
 
     const sessions = await ctx.db
       .query("sessions")
-      .withIndex("by_status", (q) => q.eq("status", "active"))
+      .withIndex("by_account_and_status", (q) =>
+        q.eq("accountId", userId).eq("status", "active"),
+      )
       .collect();
 
     const sessionsWithDetails = await Promise.all(
@@ -69,6 +71,10 @@ export const startSession = mutation({
       throw new Error("Stol topilmadi");
     }
 
+    if (table.accountId !== userId) {
+      throw new Error("Bu stolga ruxsatingiz yo'q");
+    }
+
     if (!table.isActive) {
       throw new Error("Stol faol emas");
     }
@@ -79,10 +85,16 @@ export const startSession = mutation({
       throw new Error("Mijoz topilmadi");
     }
 
+    if (customer.accountId !== userId) {
+      throw new Error("Mijoz boshqa akkauntga tegishli");
+    }
+
     // Faol sessiya borligini tekshirish
     const existingSession = await ctx.db
       .query("sessions")
-      .withIndex("by_table", (q) => q.eq("tableId", args.tableId))
+      .withIndex("by_account_and_table", (q) =>
+        q.eq("accountId", userId).eq("tableId", args.tableId),
+      )
       .filter((q) => q.eq(q.field("status"), "active"))
       .first();
 
@@ -91,6 +103,7 @@ export const startSession = mutation({
     }
 
     const sessionId = await ctx.db.insert("sessions", {
+      accountId: userId,
       tableId: args.tableId,
       customerId: args.customerId,
       startTime: Date.now(),
@@ -119,6 +132,10 @@ export const completeSession = mutation({
     const session = await ctx.db.get(args.sessionId);
     if (!session) {
       throw new Error("Sessiya topilmadi");
+    }
+
+    if (session.accountId !== userId) {
+      throw new Error("Sessiya boshqa akkauntga tegishli");
     }
 
     if (session.status !== "active") {
@@ -156,6 +173,7 @@ export const completeSession = mutation({
     // To'lovni qayd qilish (agar to'lov bo'lsa)
     if (args.paidAmount > 0 && args.paymentType !== "debt") {
       await ctx.db.insert("payments", {
+        accountId: userId,
         sessionId: args.sessionId,
         customerId: session.customerId,
         amount: args.paidAmount,
@@ -205,7 +223,9 @@ export const getSessionHistory = query({
 
     const sessions = await ctx.db
       .query("sessions")
-      .withIndex("by_status", (q) => q.eq("status", "completed"))
+      .withIndex("by_account_and_status", (q) =>
+        q.eq("accountId", userId).eq("status", "completed"),
+      )
       .order("desc")
       .collect();
 

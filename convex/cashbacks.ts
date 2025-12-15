@@ -18,12 +18,27 @@ export const getBalance = query({
     const userId = await getAuthUserId(ctx);
     if (!userId) return null;
 
-    const user = await ctx.db.get(userId);
-    return {
-      balance: user?.cashbackBalance || 0,
-      totalEarned: user?.totalCashbackEarned || 0,
-      totalSpent: user?.totalCashbackSpent || 0,
-    };
+    const cashbacks = await ctx.db
+      .query("cashbacks")
+      .withIndex("by_account", (q) => q.eq("accountId", userId))
+      .collect();
+
+    const totals = cashbacks.reduce(
+      (acc, cb) => {
+        if (cb.type === "earned" && cb.status !== "expired") {
+          acc.balance += cb.amount;
+          acc.totalEarned += cb.amount;
+        }
+        if (cb.type === "spent") {
+          acc.balance -= cb.amount;
+          acc.totalSpent += cb.amount;
+        }
+        return acc;
+      },
+      { balance: 0, totalEarned: 0, totalSpent: 0 },
+    );
+
+    return totals;
   },
 });
 
@@ -38,7 +53,7 @@ export const getHistory = query({
 
     const cashbacks = await ctx.db
       .query("cashbacks")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .withIndex("by_account", (q) => q.eq("accountId", userId))
       .order("desc")
       .take(args.limit || 50);
 
@@ -56,10 +71,17 @@ export const earnFromSession = mutation({
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Unauthorized");
 
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.accountId !== userId) {
+      throw new Error("Sessiya topilmadi yoki ruxsat yo'q");
+    }
+
+    if (!session.customerId) {
+      throw new Error("Sessiya uchun mijoz talab qilinadi");
+    }
+
     // Cashback miqdorini hisoblash
-    const cashbackAmount = Math.floor(
-      (args.sessionAmount * CASHBACK_PERCENTAGE) / 100
-    );
+    const cashbackAmount = Math.floor((args.sessionAmount * CASHBACK_PERCENTAGE) / 100);
 
     // Minimal miqdordan kam bo'lsa, berilmaydi
     if (cashbackAmount < MIN_CASHBACK_AMOUNT) {
@@ -71,7 +93,8 @@ export const earnFromSession = mutation({
 
     // Cashback yozuvi yaratish
     const cashbackId = await ctx.db.insert("cashbacks", {
-      userId,
+      accountId: userId,
+      customerId: session.customerId,
       amount: cashbackAmount,
       type: "earned",
       source: "session_payment",
@@ -83,11 +106,13 @@ export const earnFromSession = mutation({
     });
 
     // Foydalanuvchi balansini yangilash
-    const user = await ctx.db.get(userId);
-    await ctx.db.patch(userId, {
-      cashbackBalance: (user?.cashbackBalance || 0) + cashbackAmount,
-      totalCashbackEarned: (user?.totalCashbackEarned || 0) + cashbackAmount,
-    });
+    const customer = await ctx.db.get(session.customerId);
+    if (customer) {
+      await ctx.db.patch(session.customerId, {
+        cashbackBalance: (customer.cashbackBalance || 0) + cashbackAmount,
+        totalCashbackEarned: (customer.totalCashbackEarned || 0) + cashbackAmount,
+      });
+    }
 
     return cashbackId;
   },
@@ -103,8 +128,17 @@ export const useCashback = mutation({
     const userId = await getAuthUserId(ctx);
     if (!userId) throw new Error("Unauthorized");
 
-    const user = await ctx.db.get(userId);
-    const currentBalance = user?.cashbackBalance || 0;
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.accountId !== userId) {
+      throw new Error("Sessiya topilmadi yoki ruxsat yo'q");
+    }
+
+    if (!session.customerId) {
+      throw new Error("Mijoz talab qilinadi");
+    }
+
+    const customer = await ctx.db.get(session.customerId);
+    const currentBalance = customer?.cashbackBalance || 0;
 
     // Yetarli balans borligini tekshirish
     if (currentBalance < args.amount) {
@@ -113,7 +147,8 @@ export const useCashback = mutation({
 
     // Cashback ishlatish yozuvi
     const cashbackId = await ctx.db.insert("cashbacks", {
-      userId,
+      accountId: userId,
+      customerId: session.customerId,
       amount: args.amount,
       type: "spent",
       source: "session_payment",
@@ -124,9 +159,9 @@ export const useCashback = mutation({
     });
 
     // Balansni yangilash
-    await ctx.db.patch(userId, {
+    await ctx.db.patch(session.customerId, {
       cashbackBalance: currentBalance - args.amount,
-      totalCashbackSpent: (user?.totalCashbackSpent || 0) + args.amount,
+      totalCashbackSpent: (customer?.totalCashbackSpent || 0) + args.amount,
     });
 
     return cashbackId;
@@ -137,16 +172,17 @@ export const useCashback = mutation({
 export const expireOldCashbacks = mutation({
   args: {},
   handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+
     const now = Date.now();
     
     const expiredCashbacks = await ctx.db
       .query("cashbacks")
-      .filter((q) => 
-        q.and(
-          q.eq(q.field("status"), "active"),
-          q.lt(q.field("expiresAt"), now)
-        )
+      .withIndex("by_account_and_status", (q) =>
+        q.eq("accountId", userId).eq("status", "active"),
       )
+      .filter((q) => q.lt(q.field("expiresAt"), now))
       .collect();
 
     for (const cashback of expiredCashbacks) {
@@ -154,11 +190,13 @@ export const expireOldCashbacks = mutation({
       await ctx.db.patch(cashback._id, { status: "expired" });
 
       // Foydalanuvchi balansidan ayirish
-      const user = await ctx.db.get(cashback.userId);
-      if (user) {
-        await ctx.db.patch(cashback.userId, {
-          cashbackBalance: Math.max(0, (user.cashbackBalance || 0) - cashback.amount),
-        });
+      if (cashback.customerId) {
+        const customer = await ctx.db.get(cashback.customerId);
+        if (customer) {
+          await ctx.db.patch(cashback.customerId, {
+            cashbackBalance: Math.max(0, (customer.cashbackBalance || 0) - cashback.amount),
+          });
+        }
       }
     }
 

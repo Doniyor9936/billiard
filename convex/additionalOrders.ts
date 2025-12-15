@@ -13,6 +13,11 @@ export const getOrdersBySession = query({
       throw new Error("Tizimga kirish talab qilinadi");
     }
 
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || session.accountId !== userId) {
+      throw new Error("Sessiya topilmadi yoki ruxsat yo'q");
+    }
+
     return await ctx.db
       .query("additionalOrders")
       .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
@@ -39,6 +44,10 @@ export const addOrder = mutation({
       throw new Error("Sessiya topilmadi");
     }
 
+    if (session.accountId !== userId) {
+      throw new Error("Sessiya boshqa akkauntga tegishli");
+    }
+
     if (session.status !== "active") {
       throw new Error("Faqat faol sessiyalarga buyurtma qo'shish mumkin");
     }
@@ -46,6 +55,7 @@ export const addOrder = mutation({
     const totalPrice = args.quantity * args.unitPrice;
 
     return await ctx.db.insert("additionalOrders", {
+      accountId: userId,
       sessionId: args.sessionId,
       itemName: args.itemName,
       quantity: args.quantity,
@@ -75,6 +85,10 @@ export const removeOrder = mutation({
     const session = await ctx.db.get(order.sessionId);
     if (!session) {
       throw new Error("Sessiya topilmadi");
+    }
+
+    if (session.accountId !== userId) {
+      throw new Error("Sessiya boshqa akkauntga tegishli");
     }
 
     if (session.status !== "active") {
