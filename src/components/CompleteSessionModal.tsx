@@ -24,6 +24,7 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
 
   const handleComplete = async (e: React.FormEvent) => {
     e.preventDefault();
+    
     if (!session) return;
 
     if (paidAmount < 0) {
