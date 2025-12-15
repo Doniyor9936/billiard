@@ -4,13 +4,15 @@ import { getAuthUserId } from "@convex-dev/auth/server";
 
 const CASHBACK_EXPIRY_DAYS = 90;
 
+// ======================
+// Helper: Sozlamalarni olish yoki yaratish
+// ======================
 async function getOrCreateSettings(ctx: any, accountId: string, userId: string) {
   let settings = await ctx.db
     .query("cashbackSettings")
     .withIndex("by_account", (q: any) => q.eq("accountId", accountId))
     .first();
 
-    
   if (!settings) {
     const now = Date.now();
     const defaults = {
@@ -30,9 +32,10 @@ async function getOrCreateSettings(ctx: any, accountId: string, userId: string) 
   return settings;
 }
 
-// Cashback balansi
+// ======================
+// Query: Cashback balans
+// ======================
 export const getBalance = query({
-  args: {},
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
     if (!userId) return null;
@@ -59,7 +62,22 @@ export const getBalance = query({
   },
 });
 
-// Cashback ishlatish
+// ======================
+// Query: Cashback sozlamalari
+// ======================
+export const getSettings = query({
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Tizimga kirish talab qilinadi");
+
+    const settings = await getOrCreateSettings(ctx, userId, userId);
+    return settings;
+  },
+});
+
+// ======================
+// Mutation: Cashback ishlatish
+// ======================
 export const useCashback = mutation({
   args: { amount: v.number(), sessionId: v.id("sessions") },
   handler: async (ctx, args) => {
@@ -77,7 +95,10 @@ export const useCashback = mutation({
     const settings = await getOrCreateSettings(ctx, userId, userId);
 
     const totalAmount = session.totalAmount ?? 0;
-    const maxAllowed = Math.min(customer.cashbackBalance ?? 0, Math.floor((totalAmount * settings.maxUsagePercent) / 100));
+    const maxAllowed = Math.min(
+      customer.cashbackBalance ?? 0,
+      Math.floor((totalAmount * settings.maxUsagePercent) / 100)
+    );
 
     if (args.amount > maxAllowed) throw new Error("Cashbackdan foydalanish limiti oshib ketdi");
 
@@ -96,6 +117,38 @@ export const useCashback = mutation({
     await ctx.db.patch(session.customerId, {
       cashbackBalance: (customer.cashbackBalance || 0) - args.amount,
       totalCashbackSpent: (customer.totalCashbackSpent || 0) + args.amount,
+    });
+
+    return cashbackId;
+  },
+});
+
+// ======================
+// Mutation: Cashback yaratish (balans qo‘shish)
+// ======================
+export const addCashback = mutation({
+  args: { customerId: v.id("customers"), amount: v.number(), source: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Unauthorized");
+
+    const customer = await ctx.db.get(args.customerId);
+    if (!customer || customer.accountId !== userId) throw new Error("Mijoz topilmadi");
+
+    const cashbackId = await ctx.db.insert("cashbacks", {
+      accountId: userId,
+      customerId: args.customerId,
+      amount: args.amount,
+      type: "earned",
+      source: args.source,
+      description: "Cashback qo‘shildi",
+      status: "active",
+      createdAt: Date.now(),
+    });
+
+    await ctx.db.patch(args.customerId, {
+      cashbackBalance: (customer.cashbackBalance || 0) + args.amount,
+      totalCashbackEarned: (customer.totalCashbackEarned || 0) + args.amount,
     });
 
     return cashbackId;
