@@ -1,13 +1,29 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { toast } from "sonner";
 import { Id } from "../../convex/_generated/dataModel";
 
+const PREDEFINED_TABLES = [
+  "Stol 1",
+  "Stol 2",
+  "Stol 3",
+  "Stol 4",
+  "Stol 5",
+  "Stol 6",
+  "Stol 7",
+  "Stol 8",
+  "Stol 9",
+  "Stol 10",
+  "Stol 11",
+  "Stol 12",
+];
+
 export function TablesView() {
   const tables = useQuery(api.tables.getAllTables);
   const customers = useQuery(api.customers.getAllCustomers);
   const startSession = useMutation(api.sessions.startSession);
+  const createTable = useMutation(api.tables.createTable);
   const createCustomer = useMutation(api.customers.createCustomer);
   
   const [startingTable, setStartingTable] = useState<Id<"tables"> | null>(null);
@@ -18,6 +34,23 @@ export function TablesView() {
   const [newCustomerName, setNewCustomerName] = useState("");
   const [newCustomerPhone, setNewCustomerPhone] = useState("");
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
+  const [showAddTableModal, setShowAddTableModal] = useState(false);
+  const [newTableName, setNewTableName] = useState("");
+  const [newHourlyRate, setNewHourlyRate] = useState(50000);
+  const [isCreatingTable, setIsCreatingTable] = useState(false);
+
+  const availableTableNames = useMemo(() => {
+    if (!tables) return PREDEFINED_TABLES;
+    const used = new Set(tables.map((t) => t.name.toLowerCase().trim()));
+    return PREDEFINED_TABLES.filter(
+      (name) => !used.has(name.toLowerCase().trim()),
+    );
+  }, [tables]);
+
+  const handleOpenAddTableModal = () => {
+    setNewTableName(availableTableNames[0] || "");
+    setShowAddTableModal(true);
+  };
 
   const handleStartSessionClick = (tableId: Id<"tables">) => {
     setSelectedTableForSession(tableId);
@@ -106,6 +139,12 @@ export function TablesView() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Stollar Boshqaruvi</h1>
+        <button
+          onClick={handleOpenAddTableModal}
+          className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors text-sm"
+        >
+          Stol qo'shish
+        </button>
       </div>
 
       {/* Stollar ro'yxati */}
@@ -182,7 +221,7 @@ export function TablesView() {
         <div className="text-center py-12">
           <div className="text-gray-500 text-lg">Hozircha stollar mavjud emas</div>
           <div className="text-gray-400 text-sm mt-2">
-            Sozlamalar bo'limidan yangi stol qo'shing
+            "Stol qo'shish" tugmasidan yangi stol qo'shing
           </div>
         </div>
       )}
@@ -323,6 +362,100 @@ export function TablesView() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Yangi stol qo'shish modali */}
+      {showAddTableModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">Yangi Stol Qo'shish</h2>
+              <button
+                onClick={() => setShowAddTableModal(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Stol nomi
+                </label>
+                <select
+                  value={newTableName}
+                  onChange={(e) => setNewTableName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="">Nomni tanlang</option>
+                  {availableTableNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+                {availableTableNames.length === 0 && (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Barcha oldindan belgilangan nomlar ishlatilgan.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Soatlik tarif (so'm)
+                </label>
+                <input
+                  type="number"
+                  value={newHourlyRate}
+                  onChange={(e) => setNewHourlyRate(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                  min={0}
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex space-x-3">
+              <button
+                type="button"
+                onClick={() => setShowAddTableModal(false)}
+                className="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-400 transition-colors"
+              >
+                Bekor qilish
+              </button>
+              <button
+                onClick={async () => {
+                  if (!newTableName.trim()) {
+                    toast.error("Stol nomini tanlang");
+                    return;
+                  }
+                  if (tables?.some((t) => t.name.toLowerCase().trim() === newTableName.toLowerCase().trim())) {
+                    toast.error("Bu stol nomi allaqachon mavjud");
+                    return;
+                  }
+                  try {
+                    setIsCreatingTable(true);
+                    await createTable({
+                      name: newTableName.trim(),
+                      hourlyRate: newHourlyRate || 0,
+                    });
+                    toast.success("Stol qo'shildi");
+                    setShowAddTableModal(false);
+                  } catch (error) {
+                    toast.error(error instanceof Error ? error.message : "Xatolik yuz berdi");
+                  } finally {
+                    setIsCreatingTable(false);
+                  }
+                }}
+                disabled={isCreatingTable}
+                className="flex-1 bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 transition-colors disabled:opacity-50"
+              >
+                {isCreatingTable ? "Qo'shilmoqda..." : "Qo'shish"}
+              </button>
+            </div>
           </div>
         </div>
       )}
