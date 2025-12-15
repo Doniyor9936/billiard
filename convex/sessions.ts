@@ -3,104 +3,98 @@ import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { api } from "./_generated/api";
 
-// Faol sessiyalarni olish
+/* ===============================
+   FAOL SESSIYALAR
+================================ */
 export const getActiveSessions = query({
   args: {},
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      throw new Error("Tizimga kirish talab qilinadi");
-    }
+    if (!userId) return [];
 
     const sessions = await ctx.db
       .query("sessions")
       .withIndex("by_account_and_status", (q) =>
-        q.eq("accountId", userId).eq("status", "active"),
+        q.eq("accountId", userId).eq("status", "active")
       )
       .collect();
 
-    const sessionsWithDetails = await Promise.all(
+    return Promise.all(
       sessions.map(async (session) => {
         const table = await ctx.db.get(session.tableId);
-        const customer = session.customerId ? await ctx.db.get(session.customerId) : null;
-        
-        // Qo'shimcha buyurtmalarni olish
+        const customer = session.customerId
+          ? await ctx.db.get(session.customerId)
+          : null;
+
         const additionalOrders = await ctx.db
           .query("additionalOrders")
-          .withIndex("by_session", (q) => q.eq("sessionId", session._id))
+          .withIndex("by_session", (q) =>
+            q.eq("sessionId", session._id)
+          )
           .collect();
 
-        const additionalAmount = additionalOrders.reduce((sum, order) => sum + order.totalPrice, 0);
+        const additionalAmount = additionalOrders.reduce(
+          (s, o) => s + o.totalPrice,
+          0
+        );
 
-        // Hozirgi vaqt asosida o'yin summasi
-        const currentTime = Date.now();
-        const durationMinutes = Math.ceil((currentTime - session.startTime) / (1000 * 60));
-        const gameAmount = Math.ceil((durationMinutes / 60) * session.hourlyRate);
+        const duration = Math.ceil(
+          (Date.now() - session.startTime) / 60000
+        );
+
+        const gameAmount = Math.ceil(
+          (duration / 60) * session.hourlyRate
+        );
 
         return {
           ...session,
           table,
           customer,
-          additionalOrders,
-          currentDuration: durationMinutes,
-          currentGameAmount: gameAmount,
-          currentAdditionalAmount: additionalAmount,
-          currentTotalAmount: gameAmount + additionalAmount,
+          duration,
+          gameAmount,
+          additionalAmount,
+          totalAmount: gameAmount + additionalAmount,
         };
       })
     );
-
-    return sessionsWithDetails;
   },
 });
 
-// Yangi sessiya boshlash
+/* ===============================
+   SESSIYA BOSHLASH
+================================ */
 export const startSession = mutation({
   args: {
     tableId: v.id("tables"),
-    customerId: v.id("customers"), // Yangi sessiyalar uchun majburiy
+    customerId: v.id("customers"),
   },
+
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      throw new Error("Tizimga kirish talab qilinadi");
-    }
+    if (!userId)
+      return { success: false, message: "Login qiling" };
 
     const table = await ctx.db.get(args.tableId);
-    if (!table) {
-      throw new Error("Stol topilmadi");
-    }
+    if (!table || table.accountId !== userId)
+      return { success: false, message: "Stol topilmadi" };
 
-    if (table.accountId !== userId) {
-      throw new Error("Bu stolga ruxsatingiz yo'q");
-    }
-
-    if (!table.isActive) {
-      throw new Error("Stol faol emas");
-    }
-
-    // Mijozni tekshirish
     const customer = await ctx.db.get(args.customerId);
-    if (!customer) {
-      throw new Error("Mijoz topilmadi");
-    }
+    if (!customer || customer.accountId !== userId)
+      return { success: false, message: "Mijoz topilmadi" };
 
-    if (customer.accountId !== userId) {
-      throw new Error("Mijoz boshqa akkauntga tegishli");
-    }
-
-    // Faol sessiya borligini tekshirish
-    const existingSession = await ctx.db
+    const existing = await ctx.db
       .query("sessions")
       .withIndex("by_account_and_table", (q) =>
-        q.eq("accountId", userId).eq("tableId", args.tableId),
+        q.eq("accountId", userId).eq("tableId", args.tableId)
       )
       .filter((q) => q.eq(q.field("status"), "active"))
       .first();
 
-    if (existingSession) {
-      throw new Error("Bu stolda allaqachon faol sessiya mavjud");
-    }
+    if (existing)
+      return {
+        success: false,
+        message: "Bu stolda faol sessiya bor",
+      };
 
     const sessionId = await ctx.db.insert("sessions", {
       accountId: userId,
@@ -111,87 +105,98 @@ export const startSession = mutation({
       status: "active",
     });
 
-    return { sessionId, success: true };
+    return { success: true, sessionId };
   },
 });
 
-// Sessiyani yakunlash
+/* ===============================
+   SESSIYANI YAKUNLASH
+================================ */
 export const completeSession = mutation({
   args: {
     sessionId: v.id("sessions"),
     paidAmount: v.number(),
-    paymentType: v.union(v.literal("cash"), v.literal("card"), v.literal("debt")),
+    paymentType: v.union(
+      v.literal("cash"),
+      v.literal("card"),
+      v.literal("debt")
+    ),
     cashbackAmount: v.optional(v.number()),
     notes: v.optional(v.string()),
   },
+
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      throw new Error("Tizimga kirish talab qilinadi");
-    }
+    if (!userId)
+      return { success: false, message: "Login qiling" };
 
     const session = await ctx.db.get(args.sessionId);
-    if (!session) {
-      throw new Error("Sessiya topilmadi");
-    }
+    if (!session || session.accountId !== userId)
+      return { success: false, message: "Sessiya topilmadi" };
 
-    if (session.accountId !== userId) {
-      throw new Error("Sessiya boshqa akkauntga tegishli");
-    }
-
-    if (session.status !== "active") {
-      throw new Error("Sessiya allaqachon yakunlangan");
-    }
+    if (session.status !== "active")
+      return {
+        success: false,
+        message: "Sessiya allaqachon yopilgan",
+      };
 
     const endTime = Date.now();
-    const duration = Math.ceil((endTime - session.startTime) / (1000 * 60)); // daqiqalarda
-    const gameAmount = Math.ceil((duration / 60) * session.hourlyRate);
+    const duration = Math.ceil(
+      (endTime - session.startTime) / 60000
+    );
 
-    // Qo'shimcha buyurtmalar summasi
+    const gameAmount = Math.ceil(
+      (duration / 60) * session.hourlyRate
+    );
+
     const additionalOrders = await ctx.db
       .query("additionalOrders")
-      .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+      .withIndex("by_session", (q) =>
+        q.eq("sessionId", args.sessionId)
+      )
       .collect();
 
-    const additionalAmount = additionalOrders.reduce((sum, order) => sum + order.totalPrice, 0);
+    const additionalAmount = additionalOrders.reduce(
+      (s, o) => s + o.totalPrice,
+      0
+    );
+
     const totalAmount = gameAmount + additionalAmount;
+    const cashbackUsed = args.cashbackAmount ?? 0;
 
-    const cashbackAmount = args.cashbackAmount ?? 0;
-    if (cashbackAmount < 0) {
-      throw new Error("Cashback summasi manfiy bo'lishi mumkin emas");
-    }
+    if (cashbackUsed > totalAmount)
+      return {
+        success: false,
+        message: "Cashback summasi noto‘g‘ri",
+      };
 
-    // Agar cashback ishlatilsa, mijoz balansidan yechib qo'yamiz
-    if (cashbackAmount > 0) {
-      if (!session.customerId) {
-        throw new Error("Cashback ishlatish uchun sessiyaga mijoz biriktirilgan bo'lishi kerak");
-      }
-
+    if (cashbackUsed > 0 && session.customerId) {
       await ctx.runMutation(api.cashbacks.useCashback, {
-        amount: cashbackAmount,
         sessionId: args.sessionId,
+        amount: cashbackUsed,
       });
     }
 
-    const effectivePaid = args.paidAmount + cashbackAmount;
-    const debtAmount = Math.max(0, totalAmount - effectivePaid);
+    const payableAmount = totalAmount - cashbackUsed;
+    const debtAmount = Math.max(
+      0,
+      payableAmount - args.paidAmount
+    );
 
-    // Sessiyani yangilash
     await ctx.db.patch(args.sessionId, {
       endTime,
       duration,
       gameAmount,
       additionalAmount,
       totalAmount,
+      cashbackUsed,
       paidAmount: args.paidAmount,
-      cashbackUsed: cashbackAmount > 0 ? cashbackAmount : undefined,
       debtAmount,
       status: "completed",
       completedBy: userId,
       notes: args.notes,
     });
 
-    // To'lovni qayd qilish (agar to'lov bo'lsa)
     if (args.paidAmount > 0 && args.paymentType !== "debt") {
       await ctx.db.insert("payments", {
         accountId: userId,
@@ -199,13 +204,10 @@ export const completeSession = mutation({
         customerId: session.customerId,
         amount: args.paidAmount,
         paymentType: args.paymentType,
-        description: `Sessiya #${args.sessionId} uchun to'lov`,
-        createdBy: userId,
         createdAt: Date.now(),
       });
     }
 
-    // Mijoz qarzini yangilash (agar mijoz va qarz bo'lsa)
     if (session.customerId && debtAmount > 0) {
       const customer = await ctx.db.get(session.customerId);
       if (customer) {
@@ -215,59 +217,60 @@ export const completeSession = mutation({
       }
     }
 
-    // Sessiya uchun cashback berish (5% bonus) - yakuniy summa asosida
-    if (totalAmount > 0) {
-      await ctx.runMutation(api.cashbacks.earnFromSession, {
-        sessionId: args.sessionId,
-      });
-    }
+    await ctx.runMutation(api.cashbacks.earnFromSession, {
+      sessionId: args.sessionId,
+    });
 
-    return { success: true, totalAmount, paidAmount: args.paidAmount, debtAmount };
+    return {
+      success: true,
+      totalAmount,
+      cashbackUsed,
+      payableAmount,
+      paidAmount: args.paidAmount,
+      debtAmount,
+    };
   },
 });
 
-// Sessiya tarixini olish
+/* ===============================
+   SESSIYA TARIXI
+================================ */
 export const getSessionHistory = query({
   args: {
     limit: v.optional(v.number()),
     offset: v.optional(v.number()),
   },
+
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      throw new Error("Tizimga kirish talab qilinadi");
-    }
+    if (!userId)
+      return { sessions: [], total: 0, hasMore: false };
 
-    const limit = args.limit || 50;
-    const offset = args.offset || 0;
+    const limit = args.limit ?? 50;
+    const offset = args.offset ?? 0;
 
     const sessions = await ctx.db
       .query("sessions")
       .withIndex("by_account_and_status", (q) =>
-        q.eq("accountId", userId).eq("status", "completed"),
+        q.eq("accountId", userId).eq("status", "completed")
       )
       .order("desc")
       .collect();
 
-    const paginatedSessions = sessions.slice(offset, offset + limit);
+    const page = sessions.slice(offset, offset + limit);
 
-    const sessionsWithDetails = await Promise.all(
-      paginatedSessions.map(async (session) => {
-        const table = await ctx.db.get(session.tableId);
-        const customer = session.customerId ? await ctx.db.get(session.customerId) : null;
-        const completedBy = session.completedBy ? await ctx.db.get(session.completedBy) : null;
-
-        return {
-          ...session,
-          table,
-          customer,
-          completedBy,
-        };
-      })
+    const data = await Promise.all(
+      page.map(async (s) => ({
+        ...s,
+        table: await ctx.db.get(s.tableId),
+        customer: s.customerId
+          ? await ctx.db.get(s.customerId)
+          : null,
+      }))
     );
 
     return {
-      sessions: sessionsWithDetails,
+      sessions: data,
       total: sessions.length,
       hasMore: offset + limit < sessions.length,
     };
