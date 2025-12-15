@@ -39,6 +39,11 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
       return;
     }
 
+    // Agar cashback tizimi o'chirilgan bo'lsa, bonus ishlatilmasin
+    const cashbackEnabled = cashbackSettings?.enabled ?? true;
+    const cashbackPercent = cashbackSettings?.percentage ?? 5;
+    const cashbackMinAmount = cashbackSettings?.minAmount ?? 1000;
+
     const totalToPay = paidAmount + cashbackAmount;
     if (totalToPay > session.currentTotalAmount) {
       toast.error("To'lov + cashback umumiy summadan ko'p bo'lishi mumkin emas");
@@ -49,6 +54,12 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
       Math.min(session.customer?.cashbackBalance || 0, session.currentTotalAmount);
     if (cashbackAmount > maxCashback) {
       toast.error("Kiritilgan cashback mijoz balansidan ko'p");
+      return;
+    }
+
+    // Tizim o'chirilgan bo'lsa, cashbackdan foydalanmaymiz
+    if (!cashbackEnabled && cashbackAmount > 0) {
+      toast.error("Cashback tizimi o'chirilgan, bonus ishlatib bo'lmaydi");
       return;
     }
 
@@ -85,8 +96,14 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
       ? (session.currentTotalAmount * cashbackSettings.maxUsagePercent) / 100
       : session.currentTotalAmount;
   const maxCashbackUsable = Math.min(customerCashback, maxByPercent);
-  const expectedCashback = Math.floor(session.currentTotalAmount * 0.05);
-  const cashbackEligible = expectedCashback >= 1000 && session.currentTotalAmount > 0;
+
+  const expectedCashback = Math.floor(
+    session.currentTotalAmount * ((cashbackSettings?.percentage ?? 5) / 100),
+  );
+  const cashbackEligible =
+    (cashbackSettings?.enabled ?? true) &&
+    session.currentTotalAmount > 0 &&
+    expectedCashback >= (cashbackSettings?.minAmount ?? 1000);
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
