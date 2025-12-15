@@ -10,6 +10,7 @@ async function getOrCreateSettings(ctx: any, accountId: string, userId: string) 
     .withIndex("by_account", (q: any) => q.eq("accountId", accountId))
     .first();
 
+    
   if (!settings) {
     const now = Date.now();
     const defaults = {
