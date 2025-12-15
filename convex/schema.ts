@@ -27,6 +27,18 @@ const applicationTables = {
     .index("by_account_and_status", ["accountId", "status"])
     .index("by_account_and_customer", ["accountId", "customerId"]),
 
+  // Cashback sozlamalari (akkaunt bo'yicha)
+  cashbackSettings: defineTable({
+    accountId: v.id("users"),
+    percentage: v.number(), // cashback foizi (masalan: 5)
+    minAmount: v.number(), // minimal summa, undan kichik bo'lsa cashback berilmaydi
+    applyOnDebt: v.boolean(), // qarz bilan yopilgan sessiyalar uchun cashback berilsinmi
+    maxUsagePercent: v.number(), // cashbackdan maksimal foydalanish limiti (%)
+    applyOnExtras: v.boolean(), // qo'shimcha buyurtmalarga ham cashback berilsinmi
+    enabled: v.boolean(), // cashback tizimi yoqilgan/ochirilgan
+    updatedAt: v.number(),
+  }).index("by_account", ["accountId"]),
+
   // O'yin sessiyalari
   sessions: defineTable({
     accountId: v.id("users"),
@@ -100,6 +112,19 @@ const applicationTables = {
   })
     .index("by_table", ["tableId"])
     .index("by_account", ["accountId"]),
+
+  // Cashback sozlamalari (akkauntga bir dona yozuv)
+  cashbackSettings: defineTable({
+    accountId: v.id("users"),
+    enabled: v.boolean(),
+    percentage: v.number(), // foiz
+    minAmount: v.number(), // minimal summa
+    applyOnDebt: v.boolean(), // qarzga yozilganda ham berilsinmi
+    maxUsagePercent: v.number(), // cashback ishlatish limiti %
+    applyOnExtras: v.boolean(), // qo'shimcha buyurtmalarga ham berilsinmi
+    updatedBy: v.id("users"),
+    updatedAt: v.number(),
+  }).index("by_account", ["accountId"]),
 };
 
 export default defineSchema({

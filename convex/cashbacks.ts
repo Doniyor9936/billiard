@@ -6,10 +6,33 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { getAuthUserId } from "@convex-dev/auth/server";
 
-// Sozlamalar
-const CASHBACK_PERCENTAGE = 5; // 5% cashback
-const MIN_CASHBACK_AMOUNT = 1000; // Minimal 1000 so'm
+// Umumiy sozlama: cashback yozuvlari uchun amal qilish muddati
 const CASHBACK_EXPIRY_DAYS = 90; // 90 kun amal qiladi
+
+// Ichki yordamchi: joriy akkaunt uchun cashback sozlamalarini olish yoki yaratish
+async function getOrCreateSettings(ctx: any, accountId: string) {
+  const existing = await ctx.db
+    .query("cashbackSettings")
+    .withIndex("by_account", (q: any) => q.eq("accountId", accountId))
+    .first();
+
+  if (existing) return existing;
+
+  const now = Date.now();
+  const defaults = {
+    accountId,
+    percentage: 5,
+    minAmount: 1000,
+    applyOnDebt: false,
+    maxUsagePercent: 30,
+    applyOnExtras: true,
+    enabled: true,
+    updatedAt: now,
+  };
+
+  const id = await ctx.db.insert("cashbackSettings", defaults);
+  return { _id: id, ...defaults };
+}
 
 // Cashback balansini olish
 export const getBalance = query({
@@ -48,6 +71,56 @@ export const getBalance = query({
     );
 
     return totals;
+  },
+});
+
+// Cashback sozlamalarini olish
+export const getSettings = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Tizimga kirish talab qilinadi");
+
+    const settings = await getOrCreateSettings(ctx, userId);
+    return settings;
+  },
+});
+
+// Cashback sozlamalarini yangilash
+export const updateSettings = mutation({
+  args: {
+    percentage: v.number(),
+    minAmount: v.number(),
+    applyOnDebt: v.boolean(),
+    maxUsagePercent: v.number(),
+    applyOnExtras: v.boolean(),
+    enabled: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error("Tizimga kirish talab qilinadi");
+
+    const existing = await ctx.db
+      .query("cashbackSettings")
+      .withIndex("by_account", (q) => q.eq("accountId", userId))
+      .first();
+
+    const updatedAt = Date.now();
+
+    if (!existing) {
+      await ctx.db.insert("cashbackSettings", {
+        accountId: userId,
+        ...args,
+        updatedAt,
+      });
+    } else {
+      await ctx.db.patch(existing._id, {
+        ...args,
+        updatedAt,
+      });
+    }
+
+    return { success: true };
   },
 });
 
@@ -103,17 +176,49 @@ export const earnFromSession = mutation({
       throw new Error("Sessiya uchun mijoz talab qilinadi");
     }
 
-    // Cashback bazasi sessiyaning yakuniy summasi (totalAmount)
-    const baseAmount = session.totalAmount ?? session.gameAmount ?? 0;
+    // Joriy akkaunt uchun cashback sozlamalarini olish
+    const settings = await getOrCreateSettings(ctx, userId);
+
+    // Cashback tizimi o'chirilgan bo'lsa, hech narsa qilmaymiz
+    if (!settings.enabled) {
+      return null;
+    }
+
+    const paidAmount = session.paidAmount ?? 0;
+    const totalAmount = session.totalAmount ?? 0;
+    const gameAmount = session.gameAmount ?? 0;
+    const debtAmount = session.debtAmount ?? 0;
+
+    // To'lov bo'lmasa cashback yo'q
+    if (paidAmount <= 0) {
+      return null;
+    }
+
+    // Agar sozlamada qarzga yozilgan sessiyalar uchun cashback berilmasin deyilgan bo'lsa,
+    // va sessiyada qarz mavjud bo'lsa, cashback bermaymiz
+    if (!settings.applyOnDebt && debtAmount > 0) {
+      return null;
+    }
+
+    // Cashback bazasi: faqat haqiqatan to'langan summa
+    let baseAmount = paidAmount;
+
+    // Agar cashback faqat o'yin qismiga berilsa, paidAmountni o'yin / umumiy nisbatiga ko'paytiramiz
+    if (!settings.applyOnExtras && totalAmount > 0 && gameAmount > 0) {
+      baseAmount = Math.floor((paidAmount * gameAmount) / totalAmount);
+    }
+
     if (baseAmount <= 0) {
       return null;
     }
 
-    // Cashback miqdorini hisoblash (5%)
-    const cashbackAmount = Math.floor((baseAmount * CASHBACK_PERCENTAGE) / 100);
+    // Cashback miqdorini hisoblash
+    const cashbackAmount = Math.floor(
+      (baseAmount * settings.percentage) / 100,
+    );
 
     // Minimal miqdordan kam bo'lsa, berilmaydi
-    if (cashbackAmount < MIN_CASHBACK_AMOUNT) {
+    if (cashbackAmount < settings.minAmount) {
       return null;
     }
 
@@ -128,7 +233,7 @@ export const earnFromSession = mutation({
       type: "earned",
       source: "session_payment",
       sessionId: args.sessionId,
-      description: `${CASHBACK_PERCENTAGE}% cashback (${baseAmount.toLocaleString()} so'mdan)`,
+      description: `${settings.percentage}% cashback (${baseAmount.toLocaleString()} so'mdan)`,
       expiresAt,
       status: "active",
       createdAt: Date.now(),
@@ -166,10 +271,34 @@ export const useCashback = mutation({
       throw new Error("Mijoz talab qilinadi");
     }
 
+    // Joriy akkaunt uchun cashback sozlamalarini olish
+    const settings = await getOrCreateSettings(ctx, userId);
+
+    if (!settings.enabled) {
+      throw new Error("Cashback tizimi o'chirilgan");
+    }
+
+    // Maksimal foydalanish limiti: sessiya umumiy summasining foizidan oshmasin
+    const totalAmount = session.totalAmount ?? 0;
+    const maxUsagePercent = settings.maxUsagePercent ?? 0;
+    const maxByPercent =
+      totalAmount > 0 ? Math.floor((totalAmount * maxUsagePercent) / 100) : 0;
+
     const customer = await ctx.db.get(session.customerId);
     const currentBalance = customer?.cashbackBalance || 0;
 
-    // Yetarli balans borligini tekshirish
+    const maxAllowed = Math.min(
+      currentBalance,
+      maxByPercent > 0 ? maxByPercent : currentBalance,
+    );
+
+    if (args.amount > maxAllowed) {
+      throw new Error(
+        `Cashbackdan foydalanish limiti oshib ketdi (maks: ${maxAllowed.toLocaleString()} so'm)`,
+      );
+    }
+
+    // Yetarli balans borligini tekshirish (qo'shimcha)
     if (currentBalance < args.amount) {
       throw new Error("Yetarli cashback balansi yo'q");
     }

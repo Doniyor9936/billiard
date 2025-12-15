@@ -11,6 +11,7 @@ interface CompleteSessionModalProps {
 
 export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModalProps) {
   const activeSessions = useQuery(api.sessions.getActiveSessions);
+  const cashbackSettings = useQuery(api.cashbacks.getSettings);
   const completeSession = useMutation(api.sessions.completeSession);
 
   const [paidAmount, setPaidAmount] = useState(0);
@@ -76,7 +77,11 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
     session.currentTotalAmount - (paidAmount + cashbackAmount),
   );
   const customerCashback = session.customer?.cashbackBalance || 0;
-  const maxCashbackUsable = Math.min(customerCashback, session.currentTotalAmount);
+  const maxByPercent =
+    cashbackSettings && cashbackSettings.maxUsagePercent != null
+      ? (session.currentTotalAmount * cashbackSettings.maxUsagePercent) / 100
+      : session.currentTotalAmount;
+  const maxCashbackUsable = Math.min(customerCashback, maxByPercent);
   const expectedCashback = Math.floor(session.currentTotalAmount * 0.05);
   const cashbackEligible = expectedCashback >= 1000 && session.currentTotalAmount > 0;
 

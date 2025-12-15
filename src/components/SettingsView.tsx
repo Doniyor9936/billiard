@@ -6,15 +6,26 @@ import { Id } from "../../convex/_generated/dataModel";
 
 export function SettingsView() {
   const tables = useQuery(api.tables.getAllTables);
+  const cashbackSettings = useQuery(api.cashbacks.getSettings);
   const createTable = useMutation(api.tables.createTable);
   const updateTableRate = useMutation(api.tables.updateTableRate);
   const toggleTableStatus = useMutation(api.tables.toggleTableStatus);
   const deleteTable = useMutation(api.tables.deleteTable);
+  const updateCashbackSettings = useMutation(api.cashbacks.updateSettings);
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTableName, setNewTableName] = useState("");
   const [newTableRate, setNewTableRate] = useState(0);
   const [isAdding, setIsAdding] = useState(false);
+
+  // Cashback sozlamalari form holati
+  const [cbEnabled, setCbEnabled] = useState(true);
+  const [cbPercent, setCbPercent] = useState(5);
+  const [cbMinAmount, setCbMinAmount] = useState(1000);
+  const [cbApplyOnDebt, setCbApplyOnDebt] = useState(false);
+  const [cbMaxUsagePercent, setCbMaxUsagePercent] = useState(30);
+  const [cbApplyOnExtras, setCbApplyOnExtras] = useState(true);
+  const [isSavingCb, setIsSavingCb] = useState(false);
 
   // Mavjud stollar ro'yxati
   const availableTableNames = [
@@ -64,6 +75,42 @@ export function SettingsView() {
     }
   };
 
+  const handleSaveCashbackSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (cbPercent < 0 || cbPercent > 100) {
+      toast.error("Cashback foizi 0 va 100 orasida bo'lishi kerak");
+      return;
+    }
+
+    if (cbMaxUsagePercent < 0 || cbMaxUsagePercent > 100) {
+      toast.error("Maksimal cashback ishlatish foizi 0 va 100 orasida bo'lishi kerak");
+      return;
+    }
+
+    if (cbMinAmount < 0) {
+      toast.error("Minimal summa manfiy bo'lishi mumkin emas");
+      return;
+    }
+
+    try {
+      setIsSavingCb(true);
+      await updateCashbackSettings({
+        percentage: cbPercent,
+        minAmount: cbMinAmount,
+        applyOnDebt: cbApplyOnDebt,
+        maxUsagePercent: cbMaxUsagePercent,
+        applyOnExtras: cbApplyOnExtras,
+        enabled: cbEnabled,
+      });
+      toast.success("Cashback sozlamalari saqlandi");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Xatolik yuz berdi");
+    } finally {
+      setIsSavingCb(false);
+    }
+  };
+
   const handleUpdateRate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingTable || newRate <= 0) {
@@ -109,6 +156,20 @@ export function SettingsView() {
     }
   };
 
+  // Cashback sozlamalari kelganda form holatini sinxronlashtirish
+  if (cashbackSettings && !isSavingCb) {
+    // Bu komponent har renderda ishlamasligi uchun faqat birinchi yuklanishda ishlatilishi kerak,
+    // ammo soddalik uchun faqat qiymatlar bo'sh bo'lganda yangilaymiz.
+    if (cbPercent === 5 && cbMinAmount === 1000 && cbMaxUsagePercent === 30) {
+      setCbEnabled(cashbackSettings.enabled ?? true);
+      setCbPercent(cashbackSettings.percentage ?? 5);
+      setCbMinAmount(cashbackSettings.minAmount ?? 1000);
+      setCbApplyOnDebt(cashbackSettings.applyOnDebt ?? false);
+      setCbMaxUsagePercent(cashbackSettings.maxUsagePercent ?? 30);
+      setCbApplyOnExtras(cashbackSettings.applyOnExtras ?? true);
+    }
+  }
+
   if (!tables) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -128,6 +189,111 @@ export function SettingsView() {
         >
           {availableNames.length === 0 ? "Barcha stollar qo'shilgan" : "Yangi Stol Qo'shish"}
         </button>
+      </div>
+
+      {/* Cashback sozlamalari */}
+      <div className="bg-white rounded-lg shadow mb-8">
+        <div className="p-6 border-b flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900">Cashback Sozlamalari</h2>
+            <p className="text-sm text-gray-500">
+              Mijozlar uchun bonus (cashback) qoidalarini sozlang
+            </p>
+          </div>
+          <label className="inline-flex items-center cursor-pointer">
+            <span className="mr-2 text-sm text-gray-700">Cashback tizimi</span>
+            <button
+              type="button"
+              onClick={() => setCbEnabled(!cbEnabled)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                cbEnabled ? "bg-green-500" : "bg-gray-300"
+              }`}
+            >
+              <span
+                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                  cbEnabled ? "translate-x-5" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </label>
+        </div>
+        <form onSubmit={handleSaveCashbackSettings} className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Cashback foizi (%)
+            </label>
+            <input
+              type="number"
+              value={cbPercent}
+              onChange={(e) => setCbPercent(Math.max(0, Math.min(100, parseInt(e.target.value || "0", 10))))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              min={0}
+              max={100}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Minimal summa (so'm)
+            </label>
+            <input
+              type="number"
+              value={cbMinAmount}
+              onChange={(e) => setCbMinAmount(Math.max(0, parseInt(e.target.value || "0", 10)))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              min={0}
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Cashbackdan maksimal foydalanish (%)
+            </label>
+            <input
+              type="number"
+              value={cbMaxUsagePercent}
+              onChange={(e) =>
+                setCbMaxUsagePercent(
+                  Math.max(0, Math.min(100, parseInt(e.target.value || "0", 10))),
+                )
+              }
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              min={0}
+              max={100}
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Masalan, 30% bo'lsa, sessiya summasining maksimal 30% qismi cashback bilan yopiladi.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Qoidalar
+            </label>
+            <label className="flex items-center space-x-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={cbApplyOnDebt}
+                onChange={(e) => setCbApplyOnDebt(e.target.checked)}
+              />
+              <span>Qarzga yozilgan sessiyalar uchun ham cashback berilsin</span>
+            </label>
+            <label className="flex items-center space-x-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                checked={cbApplyOnExtras}
+                onChange={(e) => setCbApplyOnExtras(e.target.checked)}
+              />
+              <span>Qo'shimcha buyurtmalar uchun ham cashback hisoblasin</span>
+            </label>
+          </div>
+          <div className="md:col-span-2 flex justify-end">
+            <button
+              type="submit"
+              disabled={isSavingCb}
+              className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors disabled:opacity-50"
+            >
+              {isSavingCb ? "Saqlanmoqda..." : "Cashback sozlamalarini saqlash"}
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Stollar boshqaruvi */}
