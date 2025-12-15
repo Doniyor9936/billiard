@@ -237,13 +237,33 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
               </select>
             </div>
 
-            {debtAmount > 0 && (
-              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md">
-                <div className="text-sm text-yellow-800">
-                  <strong>Qarz summasi:</strong> {debtAmount.toLocaleString()} so'm
-                </div>
+            {/* Cashback bilan hisoblash bo'limi */}
+            <div className="p-3 bg-gray-50 border border-gray-200 rounded-md space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Jami hisob:</span>
+                <span className="font-medium">
+                  {session.currentTotalAmount.toLocaleString()} so'm
+                </span>
               </div>
-            )}
+              <div className="flex justify-between">
+                <span className="text-gray-600">- Cashback:</span>
+                <span className="font-medium text-green-700">
+                  {cashbackAmount > 0 ? `-${cashbackAmount.toLocaleString()} so'm` : "0 so'm"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">- To'lov (naqd/karta):</span>
+                <span className="font-medium text-blue-700">
+                  {paidAmount > 0 ? `-${paidAmount.toLocaleString()} so'm` : "0 so'm"}
+                </span>
+              </div>
+              <div className="flex justify-between border-t pt-1 mt-1">
+                <span className="font-semibold">Qarz summasi:</span>
+                <span className="font-semibold text-yellow-700">
+                  {debtAmount.toLocaleString()} so'm
+                </span>
+              </div>
+            </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
