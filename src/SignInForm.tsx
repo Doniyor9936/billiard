@@ -20,18 +20,36 @@ export function SignInForm() {
           void signIn("password", formData).catch((error) => {
             let toastTitle = "";
             if (error.message.includes("Invalid password")) {
-              toastTitle = "Invalid password. Please try again.";
+              toastTitle = "Noto'g'ri parol. Qaytadan urinib ko'ring.";
             } else {
               toastTitle =
                 flow === "signIn"
-                  ? "Could not sign in, did you mean to sign up?"
-                  : "Could not sign up, did you mean to sign in?";
+                  ? "Kirish amalga oshmadi, ro'yxatdan o'tmoqchimisiz?"
+                  : "Ro'yxatdan o'tish amalga oshmadi, kirishni xohlaysizmi?";
             }
             toast.error(toastTitle);
             setSubmitting(false);
           });
         }}
       >
+        {flow === "signUp" && (
+          <>
+            <input
+              className="auth-input-field"
+              type="text"
+              name="name"
+              placeholder="Ism"
+              required
+            />
+            <input
+              className="auth-input-field"
+              type="text"
+              name="surname"
+              placeholder="Familiya"
+              required
+            />
+          </>
+        )}
         <input
           className="auth-input-field"
           type="email"
@@ -43,34 +61,34 @@ export function SignInForm() {
           className="auth-input-field"
           type="password"
           name="password"
-          placeholder="Password"
+          placeholder="Parol"
           required
         />
         <button className="auth-button" type="submit" disabled={submitting}>
-          {flow === "signIn" ? "Sign in" : "Sign up"}
+          {flow === "signIn" ? "Kirish" : "Ro'yxatdan o'tish"}
         </button>
         <div className="text-center text-sm text-secondary">
           <span>
             {flow === "signIn"
-              ? "Don't have an account? "
-              : "Already have an account? "}
+              ? "Hisobingiz yo'qmi? "
+              : "Allaqachon hisobingiz bormi? "}
           </span>
           <button
             type="button"
             className="text-primary hover:text-primary-hover hover:underline font-medium cursor-pointer"
             onClick={() => setFlow(flow === "signIn" ? "signUp" : "signIn")}
           >
-            {flow === "signIn" ? "Sign up instead" : "Sign in instead"}
+            {flow === "signIn" ? "Ro'yxatdan o'tish" : "Kirish"}
           </button>
         </div>
       </form>
       <div className="flex items-center justify-center my-3">
         <hr className="my-4 grow border-gray-200" />
-        <span className="mx-4 text-secondary">or</span>
+        <span className="mx-4 text-secondary">yoki</span>
         <hr className="my-4 grow border-gray-200" />
       </div>
       <button className="auth-button" onClick={() => void signIn("anonymous")}>
-        Sign in anonymously
+        Anonim kirish
       </button>
     </div>
   );
