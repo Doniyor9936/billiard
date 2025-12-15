@@ -2,27 +2,28 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { getAuthUserId } from "@convex-dev/auth/server";
 
-// Barcha stollarni olish
+/* ===============================
+   BARCHA STOLLARNI OLISH
+================================ */
 export const getAllTables = query({
   args: {},
   handler: async (ctx) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      throw new Error("Tizimga kirish talab qilinadi");
-    }
+    if (!userId) throw new Error("Tizimga kirish talab qilinadi");
 
+    // tables jadvalidagi barcha stolni olish, by_account index bilan
     const tables = await ctx.db
       .query("tables")
       .withIndex("by_account", (q) => q.eq("accountId", userId))
       .collect();
-    
-    // Har bir stol uchun faol sessiyani tekshirish
+
+    // Har bir stol uchun faol sessionni tekshirish
     const tablesWithStatus = await Promise.all(
       tables.map(async (table) => {
         const activeSession = await ctx.db
           .query("sessions")
           .withIndex("by_account_and_table", (q) =>
-            q.eq("accountId", userId).eq("tableId", table._id),
+            q.eq("accountId", userId).eq("tableId", table._id)
           )
           .filter((q) => q.eq(q.field("status"), "active"))
           .first();
@@ -39,127 +40,33 @@ export const getAllTables = query({
   },
 });
 
-// Yangi stol qo'shish
-export const createTable = mutation({
-  args: {
-    name: v.string(),
-    hourlyRate: v.number(),
-  },
-  handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      throw new Error("Tizimga kirish talab qilinadi");
-    }
-
-    return await ctx.db.insert("tables", {
-      accountId: userId,
-      name: args.name,
-      hourlyRate: args.hourlyRate,
-      isActive: true,
-      createdAt: Date.now(),
-    });
-  },
-});
-
-// Stol tarifini yangilash
-export const updateTableRate = mutation({
-  args: {
-    tableId: v.id("tables"),
-    newRate: v.number(),
-  },
-  handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      throw new Error("Tizimga kirish talab qilinadi");
-    }
-
-    const table = await ctx.db.get(args.tableId);
-    if (!table) {
-      throw new Error("Stol topilmadi");
-    }
-
-    if (table.accountId !== userId) {
-      throw new Error("Bu stol boshqa akkauntga tegishli");
-    }
-
-    // Tarif tarixini saqlash
-    await ctx.db.insert("rateHistory", {
-      tableId: args.tableId,
-      oldRate: table.hourlyRate,
-      newRate: args.newRate,
-      changedBy: userId,
-      changedAt: Date.now(),
-    });
-
-    // Stolni yangilash
-    await ctx.db.patch(args.tableId, {
-      hourlyRate: args.newRate,
-    });
-
-    return { success: true };
-  },
-});
-
-// Stolni faollashtirish/o'chirish
-export const toggleTableStatus = mutation({
-  args: {
-    tableId: v.id("tables"),
-  },
-  handler: async (ctx, args) => {
-    const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      throw new Error("Tizimga kirish talab qilinadi");
-    }
-
-    const table = await ctx.db.get(args.tableId);
-    if (!table) {
-      throw new Error("Stol topilmadi");
-    }
-
-    if (table.accountId !== userId) {
-      throw new Error("Bu stol boshqa akkauntga tegishli");
-    }
-
-    await ctx.db.patch(args.tableId, {
-      isActive: !table.isActive,
-    });
-
-    return { success: true };
-  },
-});
-
-// Stolni butunlay o'chirish
+/* ===============================
+   STOLNI O'CHIRISH
+================================ */
 export const deleteTable = mutation({
   args: {
     tableId: v.id("tables"),
   },
   handler: async (ctx, args) => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) {
-      throw new Error("Tizimga kirish talab qilinadi");
-    }
+    if (!userId) throw new Error("Tizimga kirish talab qilinadi");
 
+    // Stolni olish
     const table = await ctx.db.get(args.tableId);
-    if (!table) {
-      throw new Error("Stol topilmadi");
-    }
+    if (!table || table.accountId !== userId)
+      throw new Error("Stol topilmadi yoki sizga tegishli emas");
 
-    if (table.accountId !== userId) {
-      throw new Error("Bu stol boshqa akkauntga tegishli");
-    }
-
-    // Faol sessiya borligini tekshirish
+    // Bu stolga tegishli faol session bor-yo'qligini tekshirish
     const activeSession = await ctx.db
       .query("sessions")
       .withIndex("by_account_and_table", (q) =>
-        q.eq("accountId", userId).eq("tableId", args.tableId),
+        q.eq("accountId", userId).eq("tableId", args.tableId)
       )
       .filter((q) => q.eq(q.field("status"), "active"))
       .first();
 
-    if (activeSession) {
-      throw new Error("Bu stolda faol sessiya mavjud. Avval sessiyani tugatib, keyin stolni o'chiring");
-    }
+    if (activeSession)
+      throw new Error("Bu stolda faol sessiya mavjud. Avval sessiyani tugating");
 
     // Stolni o'chirish
     await ctx.db.delete(args.tableId);
