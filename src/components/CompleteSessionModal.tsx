@@ -132,9 +132,19 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
             </div>
 
             {cashbackEligible && (
-              <div className="flex justify-between text-sm text-green-700 bg-green-50 border border-green-100 rounded-md px-2 py-1">
-                <span>Taxminiy cashback (5%)</span>
-                <span className="font-semibold">+{expectedCashback.toLocaleString()} so'm</span>
+              <div className="flex flex-col gap-1 text-sm bg-green-50 border border-green-100 rounded-md px-2 py-1 text-green-700">
+                <div className="flex justify-between">
+                  <span>Taxminiy cashback (5%)</span>
+                  <span className="font-semibold">
+                    +{expectedCashback.toLocaleString()} so'm
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs text-green-800">
+                  <span>Yangi cashback balansi (taxminan)</span>
+                  <span>
+                    {(customerCashback + expectedCashback).toLocaleString()} so'm
+                  </span>
+                </div>
               </div>
             )}
           </div>
@@ -150,7 +160,9 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
               <input
                 type="number"
                 value={paidAmount}
-                onChange={(e) => setPaidAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                onChange={(e) =>
+                  setPaidAmount(Math.max(0, parseInt(e.target.value || "0", 10) || 0))
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                 min="0"
                 max={session.currentTotalAmount}
@@ -158,14 +170,24 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
               <div className="mt-1 flex space-x-2">
                 <button
                   type="button"
-                  onClick={() => setPaidAmount(session.currentTotalAmount)}
+                  onClick={() => {
+                    // To'liq to'lash: naqd/karta bilan to'liq yopish, cashbackni ishlatmaslik
+                    setCashbackAmount(0);
+                    setPaidAmount(session.currentTotalAmount);
+                    setPaymentType("cash");
+                  }}
                   className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded"
                 >
                   To'liq to'lash
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPaidAmount(0)}
+                  onClick={() => {
+                    // To'liq qarzga yozish: to'lov va cashback ishlatilmaydi
+                    setPaidAmount(0);
+                    setCashbackAmount(0);
+                    setPaymentType("debt");
+                  }}
                   className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded"
                 >
                   Qarzga yozish
@@ -229,7 +251,6 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
                 value={paymentType}
                 onChange={(e) => setPaymentType(e.target.value as "cash" | "card" | "debt")}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                disabled={paidAmount === 0}
               >
                 <option value="cash">Naqd</option>
                 <option value="card">Karta</option>
