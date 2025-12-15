@@ -9,6 +9,7 @@ interface CompleteSessionModalProps {
   onClose: () => void;
 }
 
+
 export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModalProps) {
   const activeSessions = useQuery(api.sessions.getActiveSessions);
   const cashbackSettings = useQuery(api.cashbacks.getSettings);
@@ -22,7 +23,7 @@ export function CompleteSessionModal({ sessionId, onClose }: CompleteSessionModa
 
   const session = activeSessions?.find((s) => s._id === sessionId);
 
-  
+
   const handleComplete = async (e: React.FormEvent) => {
     e.preventDefault();
 
