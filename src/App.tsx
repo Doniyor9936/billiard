@@ -8,6 +8,8 @@ import { CashbackView } from "./components/CashbackView";
 import { BrowserRouter, Routes, Route, Link, useLocation } from "react-router-dom";
 import { Wallet, LayoutDashboard } from "lucide-react";
 
+
+
 export default function App() {
   return (
     <BrowserRouter>
