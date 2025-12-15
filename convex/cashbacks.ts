@@ -103,8 +103,8 @@ export const earnFromSession = mutation({
       throw new Error("Sessiya uchun mijoz talab qilinadi");
     }
 
-    // Cashback bazasi faqat o'yin summasi (gameAmount) bo'yicha
-    const baseAmount = session.gameAmount || 0;
+    // Cashback bazasi sessiyaning yakuniy summasi (totalAmount)
+    const baseAmount = session.totalAmount ?? session.gameAmount ?? 0;
     if (baseAmount <= 0) {
       return null;
     }

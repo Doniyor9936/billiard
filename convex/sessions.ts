@@ -194,8 +194,8 @@ export const completeSession = mutation({
       }
     }
 
-    // Sessiya uchun cashback berish (5% bonus) - faqat o'yin summasi asosida
-    if (gameAmount > 0) {
+    // Sessiya uchun cashback berish (5% bonus) - yakuniy summa asosida
+    if (totalAmount > 0) {
       await ctx.runMutation(api.cashbacks.earnFromSession, {
         sessionId: args.sessionId,
       });
